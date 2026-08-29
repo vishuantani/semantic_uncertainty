@@ -13,6 +13,10 @@ import wandb
 
 from device_utils import DEVICE, DTYPE
 
+# CHANGED FROM UPSTREAM: the inline filter loop moved to new_text_cleaning so the
+# same rule can also be applied to the beam-search outputs below.
+from new_text_cleaning import build_cleaned_ids, filter_generated_text
+
 UPSTREAM_STRINGS_TO_FILTER_ON = [
     '.', '\n', 'Q:', 'A:', 'question:', 'answer:', 'Question:', 'Answer:', 'Questions:', 'questions:', 'QUESTION:',
     'ANSWER:'
@@ -75,9 +79,9 @@ class CleanGeneratedStrings:
             max_len_of_generations = cleaned_generations.shape[-1]
 
             for i, generated_text in enumerate(generated_texts):
-                for string in self.strings_to_filter_on:
-                    if string in generated_text:
-                        generated_text = generated_text.split(string)[0]
+                # CHANGED FROM UPSTREAM: identical logic, now shared via
+                # new_text_cleaning.filter_generated_text. Behaviour unchanged.
+                generated_text = filter_generated_text(generated_text, self.strings_to_filter_on)
                 cleaned_generated_texts.append(generated_text)
                 # Combine the prompt with the cleaned answer so it seems like Question: question Answer: cleaned_answer
                 clean_ids = torch.cat(
@@ -87,6 +91,24 @@ class CleanGeneratedStrings:
 
             sample['cleaned_generated_texts'] = cleaned_generated_texts
             sample['cleaned_generations'] = cleaned_generations
+
+            # NEW - NO UPSTREAM EQUIVALENT.
+            # Upstream cleaned only the sampled generations. The beam-search
+            # outputs were left raw, which meant:
+            #   - rougeL_to_target scored a ~171-word ramble against a 1-3 word
+            #     answer, driving correctness to 0/40 and every AUROC to nan
+            #   - average_neg_log_likelihood_of_{most,second_most}_likely_gen was
+            #     computed over that same ramble, feeding the margin measure
+            # Both the text and the token ids are cleaned so the two stay
+            # consistent. The raw fields are left untouched so the raw-vs-cleaned
+            # comparison remains available downstream.
+            for field in ('most_likely_generation', 'second_most_likely_generation'):
+                cleaned = filter_generated_text(sample[field], self.strings_to_filter_on)
+                sample['cleaned_' + field] = cleaned
+                sample['cleaned_' + field + '_ids'] = build_cleaned_ids(
+                    sample['prompt'], cleaned, self.tokenizer,
+                    len(sample[field + '_ids']))
+
             cleaned_sequences.append(sample)
 
         return cleaned_sequences
@@ -116,6 +138,13 @@ class CleanGeneratedStrings:
         cleaned = [t for s in cleaned_sequences for t in s['cleaned_generated_texts']]
         cleaned_words = np.array([len(t.split()) for t in cleaned])
 
+        # NEW - NO UPSTREAM EQUIVALENT: makes the beam-search cleaning visible in
+        # W&B, since that is the change this stage now carries.
+        most_likely_raw = np.array([len(s['most_likely_generation'].split())
+                                    for s in cleaned_sequences])
+        most_likely_cleaned = np.array([len(s['cleaned_most_likely_generation'].split())
+                                        for s in cleaned_sequences])
+
         return {
             'n_questions': len(cleaned_sequences),
             'n_generations': len(cleaned),
@@ -124,6 +153,8 @@ class CleanGeneratedStrings:
             'n_empty_after_cleaning': int((cleaned_words == 0).sum()),
             'mean_cleaned_words': float(cleaned_words.mean()),
             'median_cleaned_words': float(np.median(cleaned_words)),
+            'mean_most_likely_words_raw': float(most_likely_raw.mean()),
+            'mean_most_likely_words_cleaned': float(most_likely_cleaned.mean()),
         }
 
 
