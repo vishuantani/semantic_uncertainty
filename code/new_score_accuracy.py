@@ -14,8 +14,22 @@ CHANGED FROM UPSTREAM - both variants are stored:
   *_raw      scored against `most_likely_generation`         (upstream behaviour)
   *_cleaned  scored against `cleaned_most_likely_generation` (new)
 `--score_on` decides which pair is aliased onto the bare keys. Keeping both means
-the upstream number stays reproducible and the delta is reportable, which matters
-because the cleaned number is no longer directly comparable to the paper.
+the delta is reportable, which matters because the cleaned number is no longer
+directly comparable to the paper.
+
+SCOPE OF `--score_on raw` - read this before quoting a reproduction. The *_raw
+scoring path is byte-faithful to upstream, so it reproduces upstream ACCURACY
+(exact_match, rouge*_to_target and everything analyze_results.py derives from
+them) and nothing more. It does NOT give you an upstream run end to end:
+get_likelihoods_improved.py._sequence_ids always prefers the cleaned ids once
+cleaning has been run and offers no raw switch, so every likelihood-derived
+measure (average_neg_log_likelihood_of_{most,second_most}_likely_gen, the margin
+measure, predictive entropy and semantic entropy) reflects whatever the cleaning
+stage produced. `--score_on raw` on a cleaned pickle is therefore a MIXED
+configuration - upstream accuracy against cleaned-id likelihoods - reproducing
+neither side exactly. A full upstream reproduction additionally requires running
+the likelihoods stage over an UNCLEANED generations pickle, where _sequence_ids
+takes its raw fallback path and matches upstream exactly, padding included.
 
 The scores are written back into the generations pickle in place, under the same
 bare key names upstream used, so analyze_results.py keeps working unmodified.
@@ -56,6 +70,34 @@ def reference_answers(sample, dataset):
     if dataset == 'coqa':
         return list(sample['answer']) + list(sample['additional_answers'])
     return list(sample['answer'])
+
+
+def check_dataset_matches(sequences, dataset):
+    """Fail loudly when --dataset disagrees with the run that generated the pickle.
+
+    NEW - NO UPSTREAM EQUIVALENT. Upstream never needed this: scoring happened
+    inside generate.py, where the dataset was the one argument that had just built
+    the dataloader, so a mismatch was impossible. Now that scoring is its own stage
+    reading a pickle, --dataset is supplied independently and defaults to
+    trivia_qa. Scoring a coqa pickle without --dataset coqa would silently drop
+    `additional_answers` from reference_answers(), giving a strictly smaller
+    reference set, a lower max-over-references score, and a quietly understated
+    accuracy with no error anywhere.
+
+    generate_improved.py writes `additional_answers` as None for trivia_qa and as a
+    list for coqa (see its run()), which makes it a reliable dataset signal.
+    """
+    has_additional = any(sample.get('additional_answers') is not None
+                         for sample in sequences)
+    pickle_dataset = 'coqa' if has_additional else 'trivia_qa'
+
+    if pickle_dataset != dataset:
+        raise ValueError(
+            f'--dataset={dataset} but this generations pickle looks like '
+            f'{pickle_dataset}: additional_answers is '
+            f'{"present" if has_additional else "None"} on its samples. '
+            f'Scoring with the wrong --dataset changes the reference set and '
+            f'silently shifts accuracy, so re-run with --dataset={pickle_dataset}.')
 
 
 def apply_aliases(sample, score_on):
@@ -111,6 +153,9 @@ class AccuracyScorer:
         return sample
 
     def score(self, sequences):
+        # NEW - NO UPSTREAM EQUIVALENT: guard against --dataset disagreeing with the
+        # generating run before any scoring happens. See check_dataset_matches.
+        check_dataset_matches(sequences, self.args.dataset)
         for sample in sequences:
             for variant, text_key in VARIANTS.items():
                 if text_key not in sample:
@@ -154,7 +199,11 @@ def parse_args():
                         choices=['cleaned', 'raw'],
                         help='Which variant is aliased to the bare metric keys that '
                              'analyze_results.py reads. Both are always stored. '
-                             "'raw' reproduces upstream's number.")
+                             "'raw' reproduces upstream's ACCURACY only - the "
+                             'likelihood-derived measures still follow whatever the '
+                             'cleaning stage produced, because the likelihoods stage '
+                             'always prefers cleaned ids. A full upstream reproduction '
+                             'also needs a likelihoods run over an uncleaned pickle.')
     return parser.parse_args()
 
 

@@ -9,11 +9,14 @@ What this file does:
         - These are variants of Question, Answer or new line. By banning those words, when they appear (which would be when the model has answered) the next likely token should be the period and we stop generation upon finding a period.
     iv. We then load our dataset of QAs (triviaqa or coqa)
     v. Then we run the samples through a function that has two tasks:
-        a. Mark the accuracy:
+        a. Produce the answer that will later be marked for accuracy:
             - First generate the most likely (deterministic) answer by the model.
             - This is done either in a greedy fashion or with beam search, but no sampling
             - We use the beam search so that we get th most likely sequence instead of picking just the top token, we may be exploring 5 beams, but we only care about the top 2 answers
-            - We will later mark this against the actual answer based on some similarity metric (mostly Rogue-L) which tells us how correct our answer
+            - CHANGED FROM UPSTREAM: this stage no longer marks the answer. Upstream
+              scored it here with ROUGE/exact-match; that scoring moved to
+              new_score_accuracy.py so it runs AFTER clean_generated_strings_improved.py
+              (see change 4 below). This stage only stores the generation.
         b. Understand the uncertainty:
             - Generate multiple (set in args.num_generations_per_prompt) different answers for each question
             - This will give us the spread in the answers that the model generates that is later going to be used to calculate uncertainty
@@ -63,6 +66,17 @@ Changes to the original implementation:
     sequence and would otherwise inflate length and hurt ROUGE precision.
 3. --fix_question_parsing (off): the upstream split uses 'Answer: ' with a trailing space
      while the prompt ends 'Answer:', so the marker stays glued to every stored question.
+4. Correctness scoring REMOVED from this stage (not a flag - unconditional). Upstream's
+    GenerationExperiment loaded the rouge/exact_match metrics and ran
+    _reference_answers + score_against_references here, writing exact_match and
+    rouge*_to_target into the pickle during generation. That is before
+    clean_generated_strings runs, so ROUGE compared the raw beam output - a ~171-word
+    repetition loop - against a one-to-three-word reference, making rougeL_to_target ~0
+    for every question, `correct` 0/40, and every AUROC in analyze_results.py nan. All of
+    it now lives in new_score_accuracy.py, a stage that runs after cleaning and writes the
+    same bare keys back into the same pickle, so analyze_results.py is unchanged. This
+    stage's W&B summary correspondingly no longer reports accuracy_rougeL_over_0.3,
+    n_correct, mean_rougeL_to_target or mean_exact_match.
 '''
 
 import argparse
@@ -121,7 +135,9 @@ class GenerationExperiment:
         self._load_model_and_tokenizer()
         self._build_dataloader()
         self._build_generation_controls()
-        self._load_metrics()
+        # REMOVED - CHANGED FROM UPSTREAM: upstream loaded the rouge and exact_match
+        # metrics here. They moved to new_score_accuracy.py along with the scoring they
+        # served, so this stage no longer needs `evaluate` at construction time.
 
     # ------------------------------------------------------------------ setup
 
@@ -223,11 +239,6 @@ class GenerationExperiment:
                     return stripped[:-len(word)].rstrip()
 
         return text
-
-    def _load_metrics(self):
-        # REMOVED - CHANGED FROM UPSTREAM: the rouge and exact_match metrics moved
-        # to new_score_accuracy.py along with the scoring they served.
-        pass
 
     # ------------------------------------------------------------- generation
 

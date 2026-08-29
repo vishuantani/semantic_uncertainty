@@ -172,7 +172,13 @@ def main():
 
     wandb.init(project='nlg_uncertainty', id=args.run_id, config=args, resume='allow')
 
-    run_name = wandb.run.name
+    # CHANGED FROM UPSTREAM: upstream (and this file previously) used
+    # `wandb.run.name` alone. Offline - wandb disabled or no network - that is None,
+    # so this stage wrote to output/sequences/None/... and every later stage raised
+    # FileNotFoundError looking under the real run name. Falling back to run_id
+    # matches what generate_improved / get_likelihoods_improved / new_score_accuracy
+    # already do, keeping the whole pipeline on one directory offline.
+    run_name = wandb.run.name or args.run_id
 
     cleaner = CleanGeneratedStrings(args)
     cleaned_sequences, path = cleaner.run(run_name)
