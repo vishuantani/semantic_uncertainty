@@ -128,3 +128,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Data, cache files
+data/*
+hf_datasets_cache/*
+output/*
+
+# Weights and Biases
+wandb/*
+code/wandb/*
+code/data/*

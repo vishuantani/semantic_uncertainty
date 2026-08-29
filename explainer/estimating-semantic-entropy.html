@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estimating Semantic Entropy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap">
+
+<style>
+  :root {
+    --ground:   #F1F3F1;
+    --surface:  #FAFBFA;
+    --panel:    #E7EBE8;
+    --ink:      #15191B;
+    --ink-2:    #4A545A;
+    --ink-3:    #6E7A7E;
+    --rule:     #D3D9D5;
+    --rule-2:   #E2E7E3;
+    --accent:   #2C5F58;
+    --over:     #A6511F;
+    --under:    #2F6B79;
+    --over-wash:  rgba(166, 81, 31, 0.08);
+    --under-wash: rgba(47, 107, 121, 0.08);
+    --accent-wash: rgba(44, 95, 88, 0.07);
+
+    --serif: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
+    --mono:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --label: "Archivo", ui-sans-serif, system-ui, sans-serif;
+
+    --measure: 68ch;
+    --rail: 4.5rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0F1413;
+      --surface:  #161C1B;
+      --panel:    #1C2422;
+      --ink:      #E7EDEA;
+      --ink-2:    #A3AFAB;
+      --ink-3:    #808C89;
+      --rule:     #2A3331;
+      --rule-2:   #212928;
+      --accent:   #74B8AA;
+      --over:     #DC9160;
+      --under:    #6FB3C4;
+      --over-wash:  rgba(220, 145, 96, 0.11);
+      --under-wash: rgba(111, 179, 196, 0.11);
+      --accent-wash: rgba(116, 184, 170, 0.09);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:   #0F1413;
+    --surface:  #161C1B;
+    --panel:    #1C2422;
+    --ink:      #E7EDEA;
+    --ink-2:    #A3AFAB;
+    --ink-3:    #808C89;
+    --rule:     #2A3331;
+    --rule-2:   #212928;
+    --accent:   #74B8AA;
+    --over:     #DC9160;
+    --under:    #6FB3C4;
+    --over-wash:  rgba(220, 145, 96, 0.11);
+    --under-wash: rgba(111, 179, 196, 0.11);
+    --accent-wash: rgba(116, 184, 170, 0.09);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 1.0625rem;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+    padding: 0 1.5rem 6rem;
+  }
+
+  .wrap {
+    max-width: calc(var(--measure) + var(--rail) + 2rem);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3.5rem;
+  }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    padding: 4.5rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 2.5rem;
+  }
+
+  .eyebrow {
+    font-family: var(--label);
+    font-weight: 600;
+    font-size: 0.6875rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: clamp(2.25rem, 6vw, 3.5rem);
+    line-height: 1.04;
+    letter-spacing: -0.021em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .standfirst {
+    font-size: 1.1875rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 58ch;
+    margin: 0;
+  }
+
+  .masthead-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 2rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-3);
+    margin-top: 0.25rem;
+  }
+  .masthead-meta span { white-space: nowrap; }
+  .masthead-meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+
+  section {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    column-gap: 2rem;
+  }
+
+  .num {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ink-3);
+    padding-top: 0.62rem;
+    letter-spacing: 0.02em;
+  }
+
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+    min-width: 0;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: clamp(1.5rem, 3.2vw, 1.9rem);
+    line-height: 1.18;
+    letter-spacing: -0.014em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 {
+    font-family: var(--label);
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin: 1rem 0 -0.35rem;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--panel);
+    padding: 0.1em 0.34em;
+    border-radius: 3px;
+  }
+
+  ul { margin: 0; padding-left: 1.15rem; max-width: var(--measure); display: flex; flex-direction: column; gap: 0.55rem; }
+  li { padding-left: 0.2rem; }
+  li::marker { color: var(--ink-3); }
+
+  /* ---------- math panels ---------- */
+
+  .math {
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    line-height: 1.75;
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 4px 4px 0;
+    padding: 1.1rem 1.35rem;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--ink);
+  }
+  .math.up   { border-left-color: var(--over);  background: var(--over-wash); }
+  .math.down { border-left-color: var(--under); background: var(--under-wash); }
+
+  .math .note {
+    font-family: var(--serif);
+    font-size: 0.9rem;
+    color: var(--ink-3);
+    font-style: italic;
+  }
+
+  pre.code {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.65;
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0;
+    color: var(--ink-2);
+  }
+  pre.code b { color: var(--ink); font-weight: 600; }
+  pre.code i { color: var(--ink-3); font-style: normal; }
+
+  /* ---------- callout ---------- */
+
+  .callout {
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--accent-wash);
+    padding: 1.15rem 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-width: var(--measure);
+  }
+  .callout .tag {
+    font-family: var(--label);
+    font-weight: 600;
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .callout p { font-size: 1rem; }
+
+  /* ---------- tables ---------- */
+
+  .table-scroll { overflow-x: auto; max-width: 100%; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 30rem;
+    font-size: 0.9375rem;
+    font-variant-numeric: tabular-nums;
+  }
+  caption {
+    caption-side: top;
+    text-align: left;
+    font-family: var(--label);
+    font-weight: 600;
+    font-size: 0.6875rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding-bottom: 0.7rem;
+  }
+  th {
+    font-family: var(--label);
+    font-weight: 600;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    text-align: left;
+    padding: 0 0.9rem 0.55rem 0;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td {
+    padding: 0.62rem 0.9rem 0.62rem 0;
+    border-bottom: 1px solid var(--rule-2);
+    vertical-align: baseline;
+  }
+  th.n, td.n { text-align: right; font-family: var(--mono); font-size: 0.85rem; padding-right: 0; }
+  tbody tr:last-child td { border-bottom: none; }
+  td .swatch {
+    display: inline-block;
+    width: 0.55rem; height: 0.55rem;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+    vertical-align: 0.02em;
+  }
+  .sw-over  { background: var(--over); }
+  .sw-under { background: var(--under); }
+  .sw-exact { background: var(--accent); }
+
+  .up-txt   { color: var(--over);  font-weight: 600; }
+  .down-txt { color: var(--under); font-weight: 600; }
+
+  /* ---------- figure ---------- */
+
+  figure {
+    margin: 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+  .fig-frame {
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+    border-radius: 5px;
+    padding: 1.75rem 1.25rem 1.4rem;
+    overflow-x: auto;
+  }
+  .fig-frame svg { display: block; width: 100%; height: auto; min-width: 26rem; }
+  figcaption {
+    font-size: 0.875rem;
+    color: var(--ink-3);
+    line-height: 1.5;
+    max-width: 60ch;
+  }
+
+  .svg-label { font-family: "Archivo", sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .svg-mono  { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+
+  /* ---------- pipeline ---------- */
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: var(--measure);
+    border-top: 1px solid var(--rule);
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 1.6rem minmax(0, 1fr);
+    gap: 1rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--rule-2);
+  }
+  .step .k {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-3);
+    padding-top: 0.22rem;
+  }
+  .step .t { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+  .step .t b { font-weight: 700; font-size: 1rem; }
+  .step .t span { color: var(--ink-2); font-size: 0.95rem; }
+  .step .t code { font-size: 0.8rem; }
+
+  /* ---------- footer ---------- */
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    font-size: 0.875rem;
+    color: var(--ink-3);
+    max-width: var(--measure);
+  }
+  footer p { font-size: 0.875rem; }
+
+  @media (max-width: 40rem) {
+    :root { --rail: 0rem; }
+    section { grid-template-columns: minmax(0, 1fr); }
+    .num { padding-top: 0; padding-bottom: 0.35rem; }
+    body { padding: 0 1.15rem 4rem; font-size: 1rem; }
+    header.masthead { padding-top: 3rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Estimator notes · semantic uncertainty</p>
+    <h1>Estimating Semantic Entropy</h1>
+    <p class="standfirst">Entropy is an average of surprise. You can never sum over every outcome, so you sample — and the moment you do, the question stops being “what is the entropy” and becomes “which direction is my answer wrong in.”</p>
+    <div class="masthead-meta">
+      <span><b>Subject</b> Kuhn, Gal &amp; Farquhar (2023), reference implementation</span>
+      <span><b>Pilot</b> run_1 · 40 questions · opt-350m · 5 generations</span>
+    </div>
+  </header>
+
+  <!-- 1 -->
+  <section>
+    <div class="num">01</div>
+    <div class="body">
+      <h2>Entropy is average surprise</h2>
+      <p>The definition, with the minus sign that is easy to drop:</p>
+      <div class="math">H(X) = − Σ<sub>i</sub> p(x<sub>i</sub>) log p(x<sub>i</sub>)</div>
+      <p>Probabilities are at most 1, so <code>log p</code> is never positive. The leading minus is what makes entropy come out as a non-negative number.</p>
+      <p>The cleaner way to read it is to treat <code>−log p(x)</code> as the <strong>surprise</strong> of an outcome. A certain event has surprise <code>−log 1 = 0</code>. A coin flip has <code>−log 0.5 ≈ 0.69</code>. A near-impossible event that happens anyway has surprise approaching infinity. Then the formula is nothing more than an expectation:</p>
+      <div class="math">H(X) = Σ<sub>i</sub> p(x<sub>i</sub>) · [surprise of x<sub>i</sub>]  =  <b>E[−log p(X)]</b></div>
+      <p>Average surprise. Each outcome’s surprise, weighted by how often it actually occurs. Every estimator below is an attempt to compute that average without being able to enumerate the outcomes.</p>
+
+      <h3>Two conventions worth pinning</h3>
+      <ul>
+        <li><strong>The base of the log sets the units.</strong> <code>log₂</code> gives bits, so a fair coin is exactly 1. Natural log gives nats, so a fair coin is 0.69. This codebase is nats throughout — <code>torch.log</code> and <code>logsumexp</code>.</li>
+        <li><strong>Entropy belongs to a distribution, not an outcome.</strong> The paper writes <code>SE(x)</code> where <code>x</code> is the <em>question</em> being conditioned on, and the sum runs over meaning classes <code>c</code>. Two lowercase symbols playing entirely different roles.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <div class="num">02</div>
+    <div class="body">
+      <h2>When you can score your samples</h2>
+      <p>Suppose you can draw from <code>p</code> <em>and</em> evaluate <code>p(x)</code> at whatever you drew. This is the comfortable case, and it has an exact answer. Draw <code>x⁽¹⁾…x⁽ᴹ⁾ ∼ p</code> and average their surprises:</p>
+      <div class="math">Ĥ = −(1/M) Σ<sub>m=1..M</sub> log p(x⁽ᵐ⁾)</div>
+      <p><strong>This is exactly unbiased.</strong> The proof is one line — <code>E[Ĥ] = −E[log p(X)] = H(X)</code> — because you are averaging independent draws of the random variable <code>−log p(X)</code>, whose mean <em>is</em> the entropy by definition. There is no approximation anywhere in it.</p>
+      <p>Its variance is <code>Var(log p(X)) / M</code>, sometimes called the varentropy. Error shrinks like <code>1/√M</code> with no systematic floor underneath it.</p>
+
+      <div class="callout">
+        <span class="tag">Why the 1/M is not bookkeeping</span>
+        <p>In the exact formula the weights are <code>p(x<sub>i</sub>)</code>, and they sum to 1. When you switch to sampling you stop writing those weights down — instead you draw <em>from</em> <code>p</code>, so frequent outcomes turn up often and rare ones seldom. Each sample now carries equal weight, and there are M of them.</p>
+        <p>The <code>1/M</code> <em>is</em> the probability weight, relocated. Drop it and your weights sum to M instead of 1, so the answer would grow with however many samples you happened to draw.</p>
+        <p>Which means: <strong>whatever a line of code divides by declares the weighting it assumes.</strong> Hold on to that — it returns in §06.</p>
+      </div>
+
+      <p>The paper’s Equation 4 is precisely this estimator, applied to meaning classes rather than raw sequences, which is why its unbiasedness claim is legitimate <em>as stated</em>:</p>
+      <div class="math">SE(x) ≈ −|C|⁻¹ Σ<sub>i=1..|C|</sub> log p(C<sub>i</sub>|x)</div>
+      <p>The catch is the phrase <em>as stated</em>. The guarantee assumes <code>p(C_i|x)</code> is known exactly. It is not.</p>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <div class="num">03</div>
+    <div class="body">
+      <h2>When you can only sample</h2>
+      <p>Now remove the ability to evaluate <code>p</code>. You have samples and nothing else. The obvious move is to build the empirical distribution first — <code>p̂(x) = count(x)/M</code> — and drop it into the formula:</p>
+      <div class="math down">Ĥ<sub>plug-in</sub> = − Σ<sub>x</sub> p̂(x) log p̂(x)</div>
+      <p><strong class="down-txt">This underestimates entropy</strong>, for two reasons that need no algebra:</p>
+      <ul>
+        <li>Outcomes you never sampled contribute nothing at all, though they carry real entropy.</li>
+        <li>Random sampling makes the empirical distribution look <em>lumpier</em> than the truth — some outcomes over-represented by luck — and lumpier means lower entropy.</li>
+      </ul>
+      <p>The leading term is known, with <code>K</code> the number of distinct outcomes:</p>
+      <div class="math down">E[Ĥ<sub>plug-in</sub>]  ≈  H − (K−1)/(2M)</div>
+      <p>Adding that back is the <strong>Miller–Madow</strong> correction. Better estimators exist for when <code>K</code> is comparable to <code>M</code> — Grassberger, Chao–Shen, NSB — and that hard regime is exactly where five generations per question puts you.</p>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <div class="num">04</div>
+    <div class="body">
+      <h2>When you must estimate <span style="font-family:var(--mono);font-size:0.85em">p</span> by sampling too</h2>
+      <p>There is a third situation, and it is the one that actually applies here. You cannot evaluate <code>p</code>, but rather than collapse to counting you estimate <code>p</code> at each sampled point using <em>further</em> sampling, then feed that into the §02 form. Two nested levels:</p>
+      <div class="steps">
+        <div class="step">
+          <div class="k">out</div>
+          <div class="t"><b>Outer draw</b><span>Sample <code>x⁽¹⁾…x⁽ᴹ⁾ ∼ p</code>. These are the points where you need <code>−log p</code>.</span></div>
+        </div>
+        <div class="step">
+          <div class="k">in</div>
+          <div class="t"><b>Inner draw</b><span>At each <code>x⁽ᵐ⁾</code>, take <code>N</code> further samples and form an estimate <code>p̂(x⁽ᵐ⁾)</code> — say, how often it recurs.</span></div>
+        </div>
+      </div>
+      <div class="math up">Ĥ = −(1/M) Σ<sub>m=1..M</sub> log p̂(x⁽ᵐ⁾)</div>
+      <p>The outer level stays unbiased. All the damage happens in the inner one.</p>
+
+      <h3>The delta method, with a number attached</h3>
+      <p>Even with <code>p̂</code> perfectly unbiased for <code>p</code>, the <code>−log</code> breaks it. Write <code>f(p) = −log p</code>, note <code>f″(p) = 1/p²</code>, and expand around the true value:</p>
+      <div class="math up">E[−log p̂]  ≈  −log p  +  Var(p̂) / (2p²)</div>
+      <p>The bias is half the <em>relative</em> variance of the inner estimate, and it is <strong class="up-txt">positive</strong> — entropy comes out too high. That is Jensen’s inequality made quantitative.</p>
+      <p>Specialise to a frequency inner estimator, <code>p̂ = k/N</code> with <code>k ∼ Binomial(N, p)</code>, so <code>Var(p̂) = p(1−p)/N</code>. The bias at a point is <code>(1−p)/(2Np)</code>. Average over the outer draws — and the <code>p(x)</code> in the denominator cancels against the sampling weight:</p>
+      <div class="math up">E[Ĥ] − H  ≈  (1/2N) Σ<sub>x</sub> (1 − p(x))  =  <b>+(K−1)/(2N)</b></div>
+
+      <h3>What the inner level costs</h3>
+      <ul>
+        <li><strong>You need N ≫ 1/p(x).</strong> The bias term blows up as <code>p → 0</code>. LLM sequence probabilities run around <code>e⁻³⁰</code>, which puts the required <code>N</code> astronomically out of reach.</li>
+        <li><strong><code>p̂</code> can come out zero</strong>, and <code>−log 0 = ∞</code>. With small <code>p</code> that is the common case, not an edge case. Every fix — Laplace smoothing, discarding, flooring — reintroduces bias of unknown sign.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section>
+    <div class="num">05</div>
+    <div class="body">
+      <h2>The bracket</h2>
+      <p>Put the two bias terms side by side and something useful falls out.</p>
+
+      <figure>
+        <div class="fig-frame">
+          <svg viewBox="0 0 640 172" role="img" aria-label="Number line showing the plug-in estimator biased below the true entropy by (K−1)/2M and the nested estimator biased above it by (K−1)/2N, with the exact scored estimator sitting on the truth.">
+            <line x1="40" y1="96" x2="600" y2="96" stroke="var(--rule)" stroke-width="1.5"/>
+            <line x1="320" y1="34" x2="320" y2="130" stroke="var(--accent)" stroke-width="2"/>
+            <text x="320" y="24" text-anchor="middle" class="svg-label" fill="var(--accent)">True H</text>
+
+            <path d="M 150 96 L 300 96" stroke="var(--under)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M 158 88 L 148 96 L 158 104" fill="none" stroke="var(--under)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="150" cy="96" r="4.5" fill="var(--under)"/>
+            <text x="150" y="128" text-anchor="middle" class="svg-label" fill="var(--under)">Plug-in</text>
+            <text x="150" y="146" text-anchor="middle" class="svg-mono" fill="var(--ink-3)">−(K−1)/2M</text>
+            <text x="225" y="84" text-anchor="middle" class="svg-mono" fill="var(--under)">too low</text>
+
+            <path d="M 340 96 L 490 96" stroke="var(--over)" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M 482 88 L 492 96 L 482 104" fill="none" stroke="var(--over)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="490" cy="96" r="4.5" fill="var(--over)"/>
+            <text x="490" y="128" text-anchor="middle" class="svg-label" fill="var(--over)">Nested</text>
+            <text x="490" y="146" text-anchor="middle" class="svg-mono" fill="var(--ink-3)">+(K−1)/2N</text>
+            <text x="415" y="84" text-anchor="middle" class="svg-mono" fill="var(--over)">too high</text>
+
+            <circle cx="320" cy="96" r="5.5" fill="var(--accent)"/>
+            <text x="320" y="146" text-anchor="middle" class="svg-mono" fill="var(--accent)">scored (§02)</text>
+          </svg>
+        </div>
+        <figcaption>Same magnitude, opposite sign. Reusing samples pulls the estimate down; estimating the inner probability by fresh sampling pushes it up. Running both brackets the truth.</figcaption>
+      </figure>
+
+      <div class="table-scroll">
+        <table>
+          <caption>Leading bias by estimator</caption>
+          <thead>
+            <tr><th>Estimator</th><th>Requires</th><th class="n">Leading bias</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="swatch sw-exact"></span>Scored samples</td><td>Evaluate <code>p</code></td><td class="n">0</td></tr>
+            <tr><td><span class="swatch sw-under"></span>Plug-in, samples reused</td><td>Samples only</td><td class="n down-txt">−(K−1)/2M</td></tr>
+            <tr><td><span class="swatch sw-over"></span>Nested, fresh inner draws</td><td>Samples only</td><td class="n up-txt">+(K−1)/2N</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>The symmetry also explains something that looks like a defect. Sample reuse in the plug-in estimator introduces a correlation between “this outcome is in the average” and “this outcome’s probability estimate” — and that correlation <em>partly cancels</em> the Jensen inflation. Splitting the samples to remove the correlation removes the cancellation too.</p>
+
+      <h3>What actually helps</h3>
+      <ul>
+        <li><strong>Sample splitting / cross-fitting.</strong> Disjoint sets for the outer point and its inner estimate. Kills the correlation term, not the Jensen term.</li>
+        <li><strong>Leave-one-out.</strong> Estimate <code>p̂₋ₘ</code> from everything except sample <code>m</code>. Same benefit, no wasted data.</li>
+        <li><strong>Explicit correction.</strong> Subtract the estimated <code>(K̂−1)/2N</code>, with the sign appropriate to your direction.</li>
+        <li><strong>Jackknife.</strong> Recompute dropping each sample, extrapolate away the <code>1/N</code> term. Works when you cannot estimate <code>K</code>.</li>
+        <li><strong>k-nearest-neighbour (Kozachenko–Leonenko).</strong> For continuous <code>x</code>, read local density off the distance to the k-th nearest sample. Sidesteps zero counts entirely.</li>
+      </ul>
+
+      <div class="callout">
+        <span class="tag">The result that closes the door</span>
+        <p><strong>Paninski (2003)</strong> proved that for discrete distributions, <em>no unbiased estimator of entropy exists</em> from a finite sample — for any sample size, whatever the estimator.</p>
+        <p>So “what is the unbiased estimator?” has no answer once you leave §02. Every method is a bias–variance trade, and the honest goal is a bias whose <strong>sign and magnitude you know</strong>, not one that is absent.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section>
+    <div class="num">06</div>
+    <div class="body">
+      <h2>Where this lands in the code</h2>
+      <p>Semantic entropy looks like the comfortable §02 case: you can score any sequence under the LLM, so <code>p(s|x)</code> is available. But the estimand is not a sequence probability — it is a <em>meaning class</em> probability, which sums over every sequence carrying that meaning:</p>
+      <div class="math">p(c|x) = Σ<sub>s∈c</sub> p(s|x)   <span class="note">← Eq. 2, not evaluable</span></div>
+      <p>That sum cannot be evaluated, only estimated. So the implementation is <strong>§02 at the outer level and §03/§04 at the inner level</strong>, and Equation 4’s guarantee does not reach the thing it is applied to. Here is where each piece comes from:</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="k">1</div>
+          <div class="t"><b>Sample</b><span><code>generate.py</code> draws M generations per question. Monte Carlo from the start — nothing is enumerated.</span></div>
+        </div>
+        <div class="step">
+          <div class="k">2</div>
+          <div class="t"><b>Score</b><span><code>get_likelihoods.py</code> runs each generation teacher-forced with the prompt masked to <code>-100</code>, then multiplies the mean cross-entropy by the token count to recover the summed <code>log p(s|x)</code>.</span></div>
+        </div>
+        <div class="step">
+          <div class="k">3</div>
+          <div class="t"><b>Cluster</b><span><code>get_semantic_similarities.py</code> groups generations into meanings using bidirectional entailment under <code>deberta-large-mnli</code>.</span></div>
+        </div>
+        <div class="step">
+          <div class="k">4</div>
+          <div class="t"><b>Aggregate</b><span><code>compute_confidence_measure.py</code> sums member likelihoods per class in log space — this line is the inner estimator, and the three deviations below all live on it.</span></div>
+        </div>
+      </div>
+
+      <pre class="code"><i># compute_confidence_measure.py — the aggregation line</i>
+aggregated_likelihoods.append(
+    torch.<b>logsumexp</b>(row[semantic_set_ids_row == semantic_set_id], dim=0))
+...
+entropy = - torch.sum(aggregated_likelihoods, dim=0) / <b>aggregated_likelihoods.shape[0]</b></pre>
+
+      <h3>Deviation 1 · duplicates are summed with multiplicity</h3>
+      <p><code>get_semantic_similarities.py:138</code> maps cluster ids back over <code>generated_texts</code>, not <code>unique_generated_texts</code>, so an identical string sampled three times contributes its probability three times. Taking expectations over the sampling:</p>
+      <div class="math up">E[p̂(C<sub>i</sub>|x)] = M · Σ<sub>s∈C<sub>i</sub></sub> p(s|x)²   <span class="note">← target was Σ p(s|x)</span></div>
+      <p>That is a <em>second moment</em>, scaled by M — a different functional, not a noisy version of the right one. It does not converge as M grows; it grows with M. Repeated sampling of one answer is evidence of <strong>confidence</strong>, and here it inflates the class’s estimated mass instead.</p>
+      <p>Collapsing duplicates first leaves only the benign coverage bias, <span class="down-txt">downward</span> and vanishing as <code>M → ∞</code>:</p>
+      <div class="math down">E[p̂(C<sub>i</sub>|x)] = Σ<sub>s∈C<sub>i</sub></sub> p(s|x)·(1 − (1−p(s|x))<sup>M</sup>)  &lt;  p(C<sub>i</sub>|x)</div>
+
+      <h3>Deviation 2 · the divisor assumes what it should measure</h3>
+      <p>Recall from §02 that the divisor declares the weighting. The two entropy functions disagree with each other:</p>
+      <pre class="code"><i># line 116 — predictive entropy divides by M, the generation count</i>
+entropy = -torch.sum(mean_across_models, dim=1) / <b>mean_across_models.shape[1]</b>
+
+<i># line 133 — semantic entropy divides by |C|, the cluster count</i>
+entropy = - torch.sum(aggregated_likelihoods, dim=0) / <b>aggregated_likelihoods.shape[0]</b></pre>
+      <p>Dividing by <code>|C|</code> weights every meaning by <code>1/|C|</code> — it assumes all meanings equally likely, which is the very thing entropy is supposed to be measuring. With five generations where meaning A is drawn four times and B once:</p>
+      <div class="table-scroll">
+        <table>
+          <caption>Implied weights, 4×A and 1×B</caption>
+          <thead><tr><th>Weighting</th><th class="n">A</th><th class="n">B</th></tr></thead>
+          <tbody>
+            <tr><td>Correct Monte Carlo · ÷ M = 5</td><td class="n">0.80</td><td class="n">0.20</td></tr>
+            <tr><td>Released code · ÷ |C| = 2</td><td class="n">0.50</td><td class="n">0.50</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>One off-hand generation counts as much as the answer the model actually believes. Note the two deviations act in <em>opposite</em> directions on the same line — multiplicity over-counts duplicates in the numerator, the <code>|C|</code> divisor under-counts them in the denominator — so fixing them together risks mistaking partial cancellation for one of them being harmless.</p>
+
+      <h3>Deviation 3 · length normalisation removes the probabilistic reading</h3>
+      <p>The headline call passes <code>-average_neg_log_likelihoods</code> — per-token means, not sums. The <code>logsumexp</code> then computes <code>log Σ p(s|x)^(1/|s|)</code>: a sum of per-token geometric-mean probabilities, which is not a probability of anything. The faithful variant sits one line below as <code>unnormalised_entropy_over_concepts</code> and is treated as optional.</p>
+      <p>Adjacent to it, <code>llh_shift = 5.0</code> is subtracted with no comment and no counterpart in the paper — rank-preserving, so AUROC-neutral, but it means the reported values are not nats of anything.</p>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section>
+    <div class="num">07</div>
+    <div class="body">
+      <h2>Measured on the pilot</h2>
+      <p>All three estimators computed on <code>run_1</code>, length-normalised inputs, from pickles already on disk. No GPU time.</p>
+
+      <div class="table-scroll">
+        <table>
+          <caption>Semantic entropy by inner estimator · 40 questions</caption>
+          <thead>
+            <tr><th>Estimator</th><th class="n">Mean</th><th class="n">SD</th><th class="n">Range</th><th class="n">ρ vs released</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Released · Σ with multiplicity</td><td class="n">5.223</td><td class="n">1.568</td><td class="n">3.454 – 9.576</td><td class="n">—</td></tr>
+            <tr><td>Duplicates collapsed</td><td class="n">5.334</td><td class="n">1.527</td><td class="n">3.678 – 9.923</td><td class="n">0.946</td></tr>
+            <tr><td>Frequency · count/M</td><td class="n">0.580</td><td class="n">0.614</td><td class="n">0.000 – 1.609</td><td class="n"><strong>0.814</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <caption>Divisor, holding the estimator fixed</caption>
+          <thead>
+            <tr><th>Divisor</th><th class="n">Mean</th><th class="n">SD</th><th class="n">ρ vs released</th><th class="n">Questions differing</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>|C| · released</td><td class="n">5.223</td><td class="n">1.568</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>M · sample-weighted</td><td class="n">4.966</td><td class="n">1.389</td><td class="n">0.980</td><td class="n">18 / 40</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>What the numbers say</h3>
+      <ul>
+        <li><strong>ρ = 0.814 is the finding.</strong> The estimator choice reorders questions. Every headline number in this literature is AUROC, which sees only ranking — a change that preserved ranking would be invisible and harmless. This one is not.</li>
+        <li><strong>The divisor is the weaker effect.</strong> ρ = 0.980 across 18 differing questions: it shifts values without much reordering. Worth knowing before spending time on it.</li>
+        <li><strong>The released values are not entropies.</strong> They sit near 5 because <code>llh_shift = 5.0</code> is subtracted from a log-likelihood already near zero, and their spread tracks likelihood magnitudes rather than how many distinct meanings appeared. The frequency variant lands in <code>[0, log 5] = [0, 1.609]</code> — the genuine attainable range for five samples.</li>
+        <li><strong>Duplicates appear in 13 of 40 questions</strong> (20 of 200 generations), and those are exactly the 13 where collapsing them changes the entropy.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section>
+    <div class="num">08</div>
+    <div class="body">
+      <h2>What follows</h2>
+      <p>The open question is not whether these gaps exist — the table above is a measurement, not an argument — but whether the paper’s claim survives them. Three moves, cheapest first:</p>
+      <ul>
+        <li><strong>Cross the three variables.</strong> Estimator (released / deduplicated / frequency) × divisor (<code>|C|</code> / <code>M</code>) × normalisation (per-token / summed). Everything needed is already in the pickles, and the opposing signs mean only the crossed design can separate the effects.</li>
+        <li><strong>Report AUROC, not entropy.</strong> Every number here describes cluster structure. The paper’s claim is about <em>predicting correctness</em>, and none of this is complete until it runs against <code>exact_match</code>.</li>
+        <li><strong>Bracket the truth on synthetic data.</strong> Run the plug-in and nested estimators on a distribution small enough to enumerate exactly. That converts “which of these is biased” from an argument into an interval.</li>
+      </ul>
+      <p>And one interpretive note worth carrying. If the biased estimator scores <em>better</em> on AUROC, the explanation is not that it measures semantic uncertainty more accurately — it is that the likelihoods are smuggling in a length or fluency signal that happens to correlate with correctness. That is a finding too, but a different one.</p>
+      <p>It also reframes the 2024 <em>Nature</em> follow-up. Moving to a count-based discrete formulation is not a simplification: it abandons a hopeless inner estimation problem over sequence probabilities in favour of an estimand where the frequency estimator is the natural object.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p><strong>Sources.</strong> Kuhn, Gal &amp; Farquhar (2023), <em>Semantic Uncertainty: Linguistic Invariances for Uncertainty Estimation in Natural Language Generation</em>, ICLR — arXiv:2302.09664. Farquhar, Kossen, Kuhn &amp; Gal (2024), <em>Detecting Hallucinations in Large Language Models Using Semantic Entropy</em>, Nature. Paninski (2003), <em>Estimation of Entropy and Mutual Information</em>, Neural Computation.</p>
+    <p><strong>Caveat.</strong> All measurements are from a 40-question pilot on TriviaQA with <code>opt-350m</code> and 5 generations per question, run on Apple Silicon. Large enough to establish the effects exist; not large enough to quantify their impact on the paper’s headline results.</p>
+  </footer>
+
+</div>
+</body>
+</html>

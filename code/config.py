@@ -54,6 +54,10 @@ device_map = {
     'lm_head': 1
 }
 
-data_dir = ''
-hf_datasets_cache = ''
-output_dir = ''
+data_dir = './data'
+hf_datasets_cache = './hf_datasets_cache'
+output_dir = './output'
+
+def trivia_qa_path(num_examples=200):
+    """Slice size lives in the path so a trimmed run can't be mistaken for a full one."""
+    return f'{data_dir}/trivia_qa' + (f'_{num_examples}' if num_examples else '')

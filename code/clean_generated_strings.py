@@ -11,12 +11,12 @@ from transformers import AutoTokenizer
 import config
 import wandb
 
+from device_utils import DEVICE, DTYPE
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--generation_model', type=str, default='opt-350m')
 parser.add_argument('--run_id', type=str, default='run_1')
 args = parser.parse_args()
-
-device = 'cuda'
 
 # Set a seed value
 seed_value = 10
@@ -35,18 +35,25 @@ torch.manual_seed(seed_value)
 
 os.environ["HF_DATASETS_CACHE"] = config.hf_datasets_cache
 
-generation_tokenizer = AutoTokenizer.from_pretrained(f"facebook/opt-350m", use_fast=False, cache_dir=config.data_dir)
+generation_tokenizer = AutoTokenizer.from_pretrained(f"facebook/{args.generation_model}", use_fast=False, cache_dir=config.data_dir)
 
 wandb.init(project='nlg_uncertainty', id=args.run_id, config=args, resume='allow')
 
 run_name = wandb.run.name
 
-tokenizer = AutoTokenizer.from_pretrained(f"facebook/opt-350m", use_fast=False, cache_dir=config.data_dir)
+tokenizer = AutoTokenizer.from_pretrained(f"facebook/{args.generation_model}", use_fast=False, cache_dir=config.data_dir)
 
-with open(f'{config.output_dir}/{run_name}/{args.generation_model}_generations.pkl', 'rb') as infile:
+with open(f'{config.output_dir}/sequences/{run_name}/{args.generation_model}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
 
 cleaned_sequences = []
+
+strings_to_filter_on = [
+    '.', '\n', 'Q:', 'A:', 'question:', 'answer:', 'Question:', 'Answer:', 'Questions:', 'questions:', 'QUESTION:',
+    'ANSWER:'
+]
+
+# Need to add plural, lowercase, uppercase, and first letter being upper case
 
 for sample in tqdm(sequences):
     cleaned_generations = torch.ones_like(sample['generations'])
@@ -56,24 +63,21 @@ for sample in tqdm(sequences):
 
     max_len_of_generations = cleaned_generations.shape[-1]
 
-    strings_to_filter_on = [
-        '.', '\n', 'Q:', 'A:', 'question:', 'answer:', 'Question:', 'Answer:', 'Questions:', 'questions:', 'QUESTION:',
-        'ANSWER:'
-    ]
-
     for i, generated_text in enumerate(generated_texts):
         for string in strings_to_filter_on:
             if string in generated_text:
                 generated_text = generated_text.split(string)[0]
         cleaned_generated_texts.append(generated_text)
+        # Combine the prompt with the cleaned answer so it seems like Question: question Answer: cleaned_answer
         clean_ids = torch.cat(
-            [sample['prompt'].to(device),
-             torch.tensor(tokenizer(generated_text)['input_ids'][1:], device=device)])
+            [sample['prompt'].to(DEVICE),
+             torch.tensor(tokenizer(generated_text)['input_ids'][1:], device=DEVICE)])
         cleaned_generations[i, :min(len(clean_ids), max_len_of_generations)] = clean_ids[:max_len_of_generations]
 
     sample['cleaned_generated_texts'] = cleaned_generated_texts
     sample['cleaned_generations'] = cleaned_generations
     cleaned_sequences.append(sample)
 
-with open(f'{config.output_dir}/{run_name}/{args.generation_model}_generations.pkl', 'wb') as outfile:
+with open(f'{config.output_dir}/sequences/{run_name}/{args.generation_model}_generations.pkl', 'wb') as outfile:
     pickle.dump(cleaned_sequences, outfile)
+

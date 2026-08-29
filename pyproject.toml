@@ -1,0 +1,39 @@
+[project]
+name = "semantic-uncertainty"
+version = "0.1.0"
+description = "Semantic uncertainty / LLM calibration experiments"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # core modelling stack
+    "torch",
+    "transformers",
+    "accelerate",
+    "datasets",
+    "evaluate",
+    "huggingface-hub",
+    "sentencepiece",
+    "protobuf",
+    # metrics used via evaluate.load('rouge') / squad / exact_match
+    "rouge-score",
+    "nltk",
+    "absl-py",
+    # analysis
+    "numpy",
+    "scipy",
+    "pandas",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "tqdm",
+    "wandb",
+    # notebooks
+    "ipykernel",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true

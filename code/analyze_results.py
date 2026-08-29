@@ -12,7 +12,9 @@ import torch
 import wandb
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-n', '--run_ids', nargs='+', default=[])
+parser.add_argument('-n', '--run_ids', nargs='+', default=['run_1'])
+parser.add_argument('--model', type=str, default='opt-350m',
+                    help='Fallback when wandb.config lacks `model` (offline runs do not persist config).')
 parser.add_argument('--verbose', type=bool, default=True)
 args = parser.parse_args()
 
@@ -26,13 +28,13 @@ run_ids_to_analyze = args.run_ids
 for run_id in run_ids_to_analyze:
 
     wandb.init(project='nlg_uncertainty', id=run_id, resume='allow')
-    run_name = wandb.run.name
-    model_name = wandb.config.model
+    run_name = wandb.run.name or run_id
+    model_name = wandb.config.get('model') or args.model
     print(run_name)
 
     def get_similarities_df():
         """Get the similarities df from the pickle file"""
-        with open(f'{config.output_dir}/{run_name}/{model_name}_generations_similarities.pkl', 'rb') as f:
+        with open(f'{config.output_dir}/sequences/{run_name}/{model_name}_generations_similarities.pkl', 'rb') as f:
             similarities = pickle.load(f)
             similarities_df = pd.DataFrame.from_dict(similarities, orient='index')
             similarities_df['id'] = similarities_df.index
@@ -45,7 +47,7 @@ for run_id in run_ids_to_analyze:
 
     def get_generations_df():
         """Get the generations df from the pickle file"""
-        with open(f'{config.output_dir}/{run_name}/{model_name}_generations.pkl', 'rb') as infile:
+        with open(f'{config.output_dir}/sequences/{run_name}/{model_name}_generations.pkl', 'rb') as infile:
             generations = pickle.load(infile)
             generations_df = pd.DataFrame(generations)
             generations_df['id'] = generations_df['id'].apply(lambda x: x[0])
@@ -68,8 +70,7 @@ for run_id in run_ids_to_analyze:
 
     def get_likelihoods_df():
         """Get the likelihoods df from the pickle file"""
-
-        with open(f'{config.output_dir}/{run_name}/aggregated_likelihoods_{model_name}_generations.pkl', 'rb') as f:
+        with open(f'{config.output_dir}/confidence/{run_name}/aggregated_likelihoods_{model_name}_generations.pkl', 'rb') as f:
             likelihoods = pickle.load(f)
             print(likelihoods.keys())
 
@@ -78,7 +79,9 @@ for run_id in run_ids_to_analyze:
             subset_keys += ['semantic_predictive_entropy_on_subset_' + str(i) for i in range(1, num_generations + 1)]
             subset_keys += ['number_of_semantic_sets_on_subset_' + str(i) for i in range(1, num_generations + 1)]
 
-            keys_to_use = ('ids', 'predictive_entropy', 'mutual_information', 'average_predictive_entropy',\
+            keys_to_use = ('ids', 'predictive_entropy', 
+                        #    'mutual_information', 
+                           'average_predictive_entropy',\
                             'average_pointwise_mutual_information', 'average_neg_log_likelihood_of_most_likely_gen',\
                             'average_neg_log_likelihood_of_second_most_likely_gen', 'neg_log_likelihood_of_most_likely_gen',\
                             'predictive_entropy_over_concepts', 'number_of_semantic_sets', 'unnormalised_entropy_over_concepts')

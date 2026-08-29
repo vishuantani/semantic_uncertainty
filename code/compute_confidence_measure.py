@@ -15,8 +15,6 @@ parser.add_argument('--run_id', type=str, default='run_1')
 parser.add_argument('--verbose', type=bool, default=True)
 args = parser.parse_args()
 
-device = 'cuda'
-
 # Set a seed value
 seed_value = 10
 # 1. Set `PYTHONHASHSEED` environment variable at a fixed value
@@ -54,6 +52,7 @@ def get_overall_log_likelihoods(list_of_results):
 
     list_of_keys = ['neg_log_likelihoods', 'average_neg_log_likelihoods', 'sequence_embeddings',\
                     'pointwise_mutual_information', 'average_neg_log_likelihood_of_most_likely_gen',\
+                    'average_neg_log_likelihood_of_second_most_likely_gen',\
                     'neg_log_likelihood_of_most_likely_gen', 'semantic_set_ids']
 
     for key in list_of_keys:
@@ -67,7 +66,6 @@ def get_overall_log_likelihoods(list_of_results):
                 results_per_model.append(average_neg_log_likelihoods)
 
             results_per_model = torch.stack(results_per_model)
-
             overall_results.append(results_per_model)
 
         if key != 'sequence_embeddings':
@@ -150,8 +148,8 @@ def get_margin_probability_uncertainty_measure(log_likelihoods):
 
 list_of_results = []
 
-with open(f'{config.output_dir}/{run_name}/{args.generation_model}_generations_{args.evaluation_model}_likelihoods.pkl',
-          'rb') as infile:
+filename = f'{config.output_dir}/likelihoods/{run_name}/{args.generation_model}_generations_{args.evaluation_model}_likelihoods.pkl'
+with open(filename,'rb') as infile:
     sequences = pickle.load(infile)
     list_of_results.append((args.evaluation_model, sequences))
 
@@ -169,7 +167,11 @@ unnormalised_margin_measures = get_margin_probability_uncertainty_measure(-overa
 
 def get_number_of_unique_elements_per_row(tensor):
     assert len(tensor.shape) == 2
-    return torch.count_nonzero(torch.sum(torch.nn.functional.one_hot(tensor), dim=1), dim=1)
+    return torch.count_nonzero(
+        torch.sum(
+            torch.nn.functional.one_hot(tensor), dim=1
+        ), dim=1
+    )
 
 
 number_of_semantic_sets = get_number_of_unique_elements_per_row(overall_results['semantic_set_ids'][0])
@@ -200,8 +202,8 @@ overall_results['unnormalised_entropy_over_concepts'] = unnormalised_entropy_ove
 overall_results['number_of_semantic_sets'] = number_of_semantic_sets
 overall_results['margin_measures'] = margin_measures
 overall_results['unnormalised_margin_measures'] = unnormalised_margin_measures
-
 overall_results['average_predictive_entropy'] = average_predictive_entropy
+
 for i in range(len(average_predictive_entropy_on_subsets)):
     overall_results[f'average_predictive_entropy_on_subset_{i + 1}'] = average_predictive_entropy_on_subsets[i]
     overall_results[f'predictive_entropy_on_subset_{i + 1}'] = predictive_entropy_on_subsets[i]
@@ -209,7 +211,7 @@ for i in range(len(average_predictive_entropy_on_subsets)):
     overall_results[f'number_of_semantic_sets_on_subset_{i + 1}'] = number_of_semantic_sets_on_subsets[i]
 overall_results['average_pointwise_mutual_information'] = average_pointwise_mutual_information
 
-with open(f'{config.output_dir}/{run_name}/aggregated_likelihoods_{args.generation_model}_generations.pkl',
+with open(f'{config.data_dir}/{run_name}/aggregated_likelihoods_{args.generation_model}_generations.pkl',
           'wb') as outfile:
     pickle.dump(overall_results, outfile)
 

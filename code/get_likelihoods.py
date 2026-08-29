@@ -6,17 +6,16 @@ import random
 import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from device_utils import DEVICE, DTYPE
 
 import wandb
+import config
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--evaluation_model', type=str, default='opt-350m')
 parser.add_argument('--generation_model', type=str, default='opt-350m')
 parser.add_argument('--run_id', type=str, default='run_1')
 args = parser.parse_args()
-
-device = 'cuda'
-import config
 
 # Set a seed value
 seed_value = 10
@@ -36,8 +35,8 @@ torch.manual_seed(seed_value)
 os.environ["HF_DATASETS_CACHE"] = config.hf_datasets_cache
 
 model = AutoModelForCausalLM.from_pretrained(f"facebook/{args.evaluation_model}",
-                                             torch_dtype=torch.float16,
-                                             cache_dir=config.data_dir).cuda()
+                                             torch_dtype=DTYPE,
+                                             cache_dir=config.data_dir).to(DEVICE)
 tokenizer = AutoTokenizer.from_pretrained(f"facebook/{args.evaluation_model}",
                                           use_fast=False,
                                           cache_dir=config.data_dir)
@@ -48,10 +47,10 @@ run_name = wandb.run.name
 
 opt_models = ['opt-125m', 'opt-350m', 'opt-1.3b', 'opt-2.7b', 'opt-6.7b', 'opt-13b', 'opt-30b']
 
-with open(f'{config.output_dir}/{run_name}/{args.generation_model}_generations.pkl', 'rb') as infile:
+with open(f'{config.output_dir}/sequences/{run_name}/{args.generation_model}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
 
-with open(f'{config.output_dir}/{run_name}/{args.generation_model}_generations_similarities.pkl', 'rb') as infile:
+with open(f'{config.output_dir}/sequences/{run_name}/{args.generation_model}_generations_similarities.pkl', 'rb') as infile:
     similarities_dict = pickle.load(infile)
 
 
@@ -63,9 +62,9 @@ def get_neg_loglikelihoods(model, sequences):
             result_dict = {}
             prompt = sample['prompt']
             if 'cleaned_generations' in sample:
-                generations = sample['cleaned_generations'].to(device)
+                generations = sample['cleaned_generations'].to(DEVICE)
             else:
-                generations = sample['generations'].to(device)
+                generations = sample['generations'].to(DEVICE)
             id_ = sample['id']
 
             average_neg_log_likelihoods = torch.zeros((generations.shape[0],))
@@ -75,9 +74,9 @@ def get_neg_loglikelihoods(model, sequences):
             pointwise_mutual_information = torch.zeros((generations.shape[0],))
             sequence_embeddings = []
 
-            for generation_index in range(generations.shape[0]):
-                prompt = prompt[prompt != tokenizer.pad_token_id]
-                generation = generations[generation_index][generations[generation_index] != tokenizer.pad_token_id]
+            for generation_index in range(generations.shape[0]): # replace this qith tqdm
+                prompt = prompt[prompt != tokenizer.pad_token_id] # Cut the prompt short to remove any padding IDs
+                generation = generations[generation_index][generations[generation_index] != tokenizer.pad_token_id] # And do the same with the generated text
 
                 # This computation of the negative log likelihoods follows this tutorial: https://huggingface.co/docs/transformers/perplexity
                 target_ids = generation.clone()
@@ -102,7 +101,7 @@ def get_neg_loglikelihoods(model, sequences):
                 average_of_last_layer_token_embeddings = torch.mean(hidden_states[-1], dim=1)
                 sequence_embeddings.append(average_of_last_layer_token_embeddings)
 
-            most_likely_generation = sample['most_likely_generation_ids'].to(device)
+            most_likely_generation = sample['most_likely_generation_ids'].to(DEVICE)
             target_ids = most_likely_generation.clone()
             target_ids[:len(prompt)] = -100
             model_output = model(torch.reshape(most_likely_generation, (1, -1)),
@@ -112,7 +111,7 @@ def get_neg_loglikelihoods(model, sequences):
             average_neg_log_likelihood_of_most_likely_gen = model_output['loss']
             most_likely_generation_embedding = torch.mean(hidden_states[-1], dim=1)
 
-            second_most_likely_generation = sample['second_most_likely_generation_ids'].to(device)
+            second_most_likely_generation = sample['second_most_likely_generation_ids'].to(DEVICE)
             target_ids = second_most_likely_generation.clone()
             target_ids[:len(prompt)] = -100
             model_output = model(torch.reshape(second_most_likely_generation, (1, -1)),
@@ -139,7 +138,7 @@ def get_neg_loglikelihoods(model, sequences):
             result_dict[
                 'average_neg_log_likelihood_of_second_most_likely_gen'] = average_neg_log_likelihood_of_second_most_likely_gen
             result_dict['neg_log_likelihood_of_most_likely_gen'] = neg_log_likelihood_of_most_likely_gen
-            result_dict['semantic_set_ids'] = torch.tensor(similarities_dict[id_[0]]['semantic_set_ids'], device=device)
+            result_dict['semantic_set_ids'] = torch.tensor(similarities_dict[id_[0]]['semantic_set_ids'])
             result_dict['id'] = id_
             result.append(result_dict)
 

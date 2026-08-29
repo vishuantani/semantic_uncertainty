@@ -4,6 +4,7 @@ import os
 import pickle
 import random
 
+from device_utils import DEVICE, DTYPE
 import evaluate
 import numpy as np
 import torch
@@ -17,8 +18,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--generation_model', type=str, default='opt-350m')
 parser.add_argument('--run_id', type=str, default='run_1')
 args = parser.parse_args()
-
-device = 'cuda'
 
 # Set a seed value
 seed_value = 10
@@ -37,16 +36,16 @@ torch.manual_seed(seed_value)
 
 os.environ["HF_DATASETS_CACHE"] = config.hf_datasets_cache
 
-generation_tokenizer = AutoTokenizer.from_pretrained(f"facebook/opt-350m", use_fast=False, cache_dir=config.data_dir)
+generation_tokenizer = AutoTokenizer.from_pretrained(f"facebook/{args.generation_model}", use_fast=False, cache_dir=config.data_dir)
 
 tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-large-mnli")
-model = AutoModelForSequenceClassification.from_pretrained("microsoft/deberta-large-mnli").cuda()
+model = AutoModelForSequenceClassification.from_pretrained("microsoft/deberta-large-mnli").to(DEVICE)
 
 wandb.init(project='nlg_uncertainty', id=args.run_id, config=args, resume='allow')
 
 run_name = wandb.run.name
 
-with open(f'{config.output_dir}/{run_name}/{args.generation_model}_generations.pkl', 'rb') as infile:
+with open(f'{config.output_dir}/sequences/{run_name}/{args.generation_model}_generations.pkl', 'rb') as infile:
     sequences = pickle.load(infile)
 
 result_dict = {}
@@ -86,9 +85,10 @@ for sample in tqdm(sequences):
         # Evalauate semantic similarity
         for i, reference_answer in enumerate(unique_generated_texts):
             for j in range(i + 1, len(unique_generated_texts)):
-
-                answer_list_1.append(unique_generated_texts[i])
-                answer_list_2.append(unique_generated_texts[j])
+                print(f"i: {i}, j: {j}, len: {len(unique_generated_texts)}")
+                # Unused code!
+                # answer_list_1.append(unique_generated_texts[i])
+                # answer_list_2.append(unique_generated_texts[j])
 
                 qa_1 = question + ' ' + unique_generated_texts[i]
                 qa_2 = question + ' ' + unique_generated_texts[j]
@@ -96,16 +96,16 @@ for sample in tqdm(sequences):
                 input = qa_1 + ' [SEP] ' + qa_2
                 inputs.append(input)
                 encoded_input = tokenizer.encode(input, padding=True)
-                prediction = model(torch.tensor(torch.tensor([encoded_input]), device='cuda'))['logits']
+                prediction = model(torch.tensor(torch.tensor([encoded_input]), device=DEVICE))['logits']
                 predicted_label = torch.argmax(prediction, dim=1)
 
                 reverse_input = qa_2 + ' [SEP] ' + qa_1
                 encoded_reverse_input = tokenizer.encode(reverse_input, padding=True)
-                reverse_prediction = model(torch.tensor(torch.tensor([encoded_reverse_input]), device='cuda'))['logits']
+                reverse_prediction = model(torch.tensor(torch.tensor([encoded_reverse_input]), device=DEVICE))['logits']
                 reverse_predicted_label = torch.argmax(reverse_prediction, dim=1)
 
                 deberta_prediction = 1
-                print(qa_1, qa_2, predicted_label, reverse_predicted_label)
+                # print(qa_1, qa_2, predicted_label, reverse_predicted_label)
                 if 0 in predicted_label or 0 in reverse_predicted_label:
                     has_semantically_different_answers = True
                     deberta_prediction = 0
@@ -129,7 +129,7 @@ for sample in tqdm(sequences):
         results = rouge.compute(predictions=answer_list_1, references=answer_list_2)
 
         for rouge_type in rouge_types:
-            syntactic_similarities[rouge_type] = results[rouge_type].mid.fmeasure
+            syntactic_similarities[rouge_type] = results[rouge_type]
 
     result_dict[id_] = {
         'syntactic_similarities': syntactic_similarities,
@@ -146,5 +146,5 @@ with open('deberta_predictions_{}.csv'.format(args.run_id), 'w', encoding='UTF8'
 
 print(result_dict)
 
-with open(f'{config.output_dir}/{run_name}/{args.generation_model}_generations_similarities.pkl', 'wb') as outfile:
+with open(f'{config.output_dir}/sequences/{run_name}/{args.generation_model}_generations_similarities.pkl', 'wb') as outfile:
     pickle.dump(result_dict, outfile)
