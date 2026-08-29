@@ -76,7 +76,6 @@ import warnings
 import accelerate
 import config
 import datasets
-import evaluate
 import numpy as np
 import torch
 import tqdm
@@ -226,8 +225,9 @@ class GenerationExperiment:
         return text
 
     def _load_metrics(self):
-        self.rouge = evaluate.load('rouge')
-        self.exact_match_metric = evaluate.load('exact_match')
+        # REMOVED - CHANGED FROM UPSTREAM: the rouge and exact_match metrics moved
+        # to new_score_accuracy.py along with the scoring they served.
+        pass
 
     # ------------------------------------------------------------- generation
 
@@ -311,31 +311,11 @@ class GenerationExperiment:
 
     # ---------------------------------------------------------------- scoring
 
-    def _reference_answers(self, batch):
-        if self.args.dataset == 'coqa':
-            return batch['answer']['text'] + [x[0] for x in batch['additional_answers']]
-        return batch['answer']
-
-    def score_against_references(self, sequence_dict, batch):
-        """Correctness labels. analyze_results.py uses rougeL_to_target > 0.3."""
-        sequence_dict['exact_match'] = 0.0
-        for rouge_type in ROUGE_TYPES:
-            sequence_dict[rouge_type + '_to_target'] = 0.0
-
-        for answer in self._reference_answers(batch):
-            predictions = [sequence_dict['most_likely_generation'].lstrip()]
-            references = [answer]
-
-            results = self.exact_match_metric.compute(predictions=predictions,
-                                                      references=references,
-                                                      ignore_case=True,
-                                                      ignore_punctuation=True)
-            sequence_dict['exact_match'] = max(results['exact_match'], sequence_dict['exact_match'])
-
-            rouge_results = self.rouge.compute(predictions=predictions, references=references)
-            for rouge_type in ROUGE_TYPES:
-                sequence_dict[rouge_type + '_to_target'] = max(
-                    rouge_results[rouge_type], sequence_dict[rouge_type + '_to_target'])
+    # REMOVED - CHANGED FROM UPSTREAM: _reference_answers and
+    # score_against_references moved to new_score_accuracy.py. Upstream scored
+    # correctness here, during generation, which is before cleaning runs - so
+    # ROUGE compared a ~171-word ramble against a 1-3 word answer and produced
+    # 0/40 correct. Scoring now happens after clean_generated_strings_improved.py.
 
     def _build_sequence_dict(self, batch, input_ids, generations, index):
         if self.args.dataset == 'coqa':
@@ -408,7 +388,6 @@ class GenerationExperiment:
                         [x[0] for x in batch['additional_answers']] if self.args.dataset == 'coqa'
                         else None)
 
-                    self.score_against_references(sequence_dict, batch)
                     sequences.append(sequence_dict)
 
         return sequences
@@ -455,27 +434,28 @@ class GenerationExperiment:
             print(f'  sampled generations ({len(sample["generated_texts"])}):')
             for j, text in enumerate(sample['generated_texts']):
                 print(f'    {j}: {text!r}')
-            print(f'  exact_match      : {sample["exact_match"]}')
-            for rouge_type in ROUGE_TYPES:
-                print(f'  {rouge_type}_to_target : {sample[rouge_type + "_to_target"]:.4f}')
-            # analyze_results.py defines correctness as rougeL_to_target > 0.3
-            print(f'  -> correct (rougeL > 0.3): {sample["rougeL_to_target"] > 0.3}')
+            # CHANGED FROM UPSTREAM: correctness is no longer known at this stage.
+            # See new_score_accuracy.py, which scores after cleaning.
             print(f'  prompt tensor     : {describe(sample["prompt"])}')
             print(f'  generations tensor: {describe(sample["generations"])}')
 
     @staticmethod
     def summarise(sequences):
-        """One line of aggregates so runs can be compared without opening the pickle."""
-        rouge_l = np.array([s['rougeL_to_target'] for s in sequences])
+        """One line of aggregates so runs can be compared without opening the pickle.
+
+        CHANGED FROM UPSTREAM: the accuracy aggregates
+        (accuracy_rougeL_over_0.3, n_correct, mean_rougeL_to_target,
+        mean_exact_match) moved to new_score_accuracy.py, which scores after
+        cleaning. Only generation-side statistics remain. max_answer_words is new
+        and is here because a value equal to --max_length_of_generated_sequence is
+        the signature of a generation that never stopped.
+        """
         answer_words = np.array([len(s['most_likely_generation'].split()) for s in sequences])
         return {
             'n_questions': len(sequences),
-            'accuracy_rougeL_over_0.3': float((rouge_l > 0.3).mean()),
-            'n_correct': int((rouge_l > 0.3).sum()),
-            'mean_rougeL_to_target': float(rouge_l.mean()),
-            'mean_exact_match': float(np.mean([s['exact_match'] for s in sequences])),
             'mean_answer_words': float(answer_words.mean()),
             'median_answer_words': float(np.median(answer_words)),
+            'max_answer_words': int(answer_words.max()),
         }
 
 
