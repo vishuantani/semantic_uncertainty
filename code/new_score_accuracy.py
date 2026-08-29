@@ -45,11 +45,16 @@ VARIANTS = {'raw': 'most_likely_generation',
 def reference_answers(sample, dataset):
     """The gold answers to score against.
 
-    Same selection upstream's GenerationExperiment._reference_answers made, but
-    reading from the pickled sample rather than the live dataset batch.
+    CHANGED FROM UPSTREAM: upstream's GenerationExperiment._reference_answers read
+    the live dataset batch, where coqa answers are a dict and additional_answers is
+    nested. This stage reads the PICKLED sample instead, and generation already
+    flattened both (generate_improved.py:405-408) - `answer` is stored as
+    batch['answer']['text'] and additional_answers as [x[0] for x in ...]. Re-applying
+    those transforms here would raise TypeError on the dict access and would take the
+    first character of each additional answer. So both are consumed flat.
     """
     if dataset == 'coqa':
-        return list(sample['answer']['text']) + [x[0] for x in sample['additional_answers']]
+        return list(sample['answer']) + list(sample['additional_answers'])
     return list(sample['answer'])
 
 
