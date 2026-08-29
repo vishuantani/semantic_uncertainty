@@ -78,6 +78,24 @@ class NegLogLikelihood:
         return output
 
 
+    def _sequence_ids(self, sequence, field):
+        """Prefer the cleaned ids when the cleaning stage produced them.
+
+        NEW - NO UPSTREAM EQUIVALENT. Upstream read
+        most_likely_generation_ids / second_most_likely_generation_ids raw, so
+        the NLL was averaged over a ~171-word repetition loop - which then fed
+        the margin measure.
+
+        The pad strip matters: cleaned ids are padded back out to the original
+        width, whereas the raw ids never had padding. Without stripping, the loss
+        would be averaged over hundreds of <pad> positions. This mirrors what the
+        sampled-generation path already does a few lines below.
+        """
+        ids = sequence.get('cleaned_' + field, sequence[field])
+        ids = ids.to(DEVICE)
+        return ids[ids != self.tokenizer.pad_token_id]
+
+
     def get_neg_loglikelihoods_for_sequence(self, sequence, semantic_set_ids):
         # Pointwise mutual information:
         #   PMI(answer) = log(p(answer|question)) - log(p(answer))
@@ -118,10 +136,12 @@ class NegLogLikelihood:
 
                 pointwise_mutual_information[generation_index] = -generation_output['neg_log_likelihood'] + generation_output['unconditioned_neg_log_likelihood']
 
-            most_likely_generation = sequence['most_likely_generation_ids'].to(DEVICE)
+            # CHANGED FROM UPSTREAM: prefer cleaned ids, and strip padding.
+            most_likely_generation = self._sequence_ids(sequence, 'most_likely_generation_ids')
             most_likely_generation_generation_output = self.get_neg_log_likelihood_for_generation(most_likely_generation, len(prompt), most_likely=True)
 
-            second_most_likely_generation = sequence['second_most_likely_generation_ids'].to(DEVICE)
+            # CHANGED FROM UPSTREAM: prefer cleaned ids, and strip padding.
+            second_most_likely_generation = self._sequence_ids(sequence, 'second_most_likely_generation_ids')
             second_most_likely_generation_generation_output = self.get_neg_log_likelihood_for_generation(second_most_likely_generation, len(prompt), most_likely=True)
 
             sequence_embeddings = torch.stack(sequence_embeddings)
