@@ -9,11 +9,14 @@ What this file does:
         - These are variants of Question, Answer or new line. By banning those words, when they appear (which would be when the model has answered) the next likely token should be the period and we stop generation upon finding a period.
     iv. We then load our dataset of QAs (triviaqa or coqa)
     v. Then we run the samples through a function that has two tasks:
-        a. Mark the accuracy:
+        a. Produce the answer that will later be marked for accuracy:
             - First generate the most likely (deterministic) answer by the model.
             - This is done either in a greedy fashion or with beam search, but no sampling
             - We use the beam search so that we get th most likely sequence instead of picking just the top token, we may be exploring 5 beams, but we only care about the top 2 answers
-            - We will later mark this against the actual answer based on some similarity metric (mostly Rogue-L) which tells us how correct our answer
+            - CHANGED FROM UPSTREAM: this stage no longer marks the answer. Upstream
+              scored it here with ROUGE/exact-match; that scoring moved to
+              new_score_accuracy.py so it runs AFTER clean_generated_strings_improved.py
+              (see change 4 below). This stage only stores the generation.
         b. Understand the uncertainty:
             - Generate multiple (set in args.num_generations_per_prompt) different answers for each question
             - This will give us the spread in the answers that the model generates that is later going to be used to calculate uncertainty
@@ -63,6 +66,17 @@ Changes to the original implementation:
     sequence and would otherwise inflate length and hurt ROUGE precision.
 3. --fix_question_parsing (off): the upstream split uses 'Answer: ' with a trailing space
      while the prompt ends 'Answer:', so the marker stays glued to every stored question.
+4. Correctness scoring REMOVED from this stage (not a flag - unconditional). Upstream's
+    GenerationExperiment loaded the rouge/exact_match metrics and ran
+    _reference_answers + score_against_references here, writing exact_match and
+    rouge*_to_target into the pickle during generation. That is before
+    clean_generated_strings runs, so ROUGE compared the raw beam output - a ~171-word
+    repetition loop - against a one-to-three-word reference, making rougeL_to_target ~0
+    for every question, `correct` 0/40, and every AUROC in analyze_results.py nan. All of
+    it now lives in new_score_accuracy.py, a stage that runs after cleaning and writes the
+    same bare keys back into the same pickle, so analyze_results.py is unchanged. This
+    stage's W&B summary correspondingly no longer reports accuracy_rougeL_over_0.3,
+    n_correct, mean_rougeL_to_target or mean_exact_match.
 '''
 
 import argparse
@@ -76,7 +90,6 @@ import warnings
 import accelerate
 import config
 import datasets
-import evaluate
 import numpy as np
 import torch
 import tqdm
@@ -85,13 +98,20 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from device_utils import DEVICE, DTYPE
 
+# RENAMED FROM UPSTREAM: generate.py calls this list `eos_tokens`, but it is NOT used
+# as end-of-sequence anywhere. It is passed as `bad_words_ids`, so these tokens are
+# SUPPRESSED - the model is forbidden from ever emitting them. The only real EOS in the
+# default configuration is the period (see _build_generation_controls). The upstream
+# name inverts the actual behaviour, which is what makes the stopping bug hard to see:
+# banning 'Question:' and '\n' removes the very tokens the few-shot format teaches the
+# model to end an answer with, so it cannot terminate and rambles to max_length.
 # The six entries the paper/upstream repo uses.
-UPSTREAM_EOS_TOKENS = ['Question:', ' Question:', '\n', 'Answer:', ' Answer:', 'Q:']
+UPSTREAM_BANNED_TOKENS = ['Question:', ' Question:', '\n', 'Answer:', ' Answer:', 'Q:']
 
 # ISSUE: opt-350m is weak enough to drift into lowercase prose and slip past the
 # upstream list, so it never emits a period and runs to max_length. Larger models hold
 # the few-shot format and do not need these extra entries.
-EXTENDED_EOS_TOKENS = UPSTREAM_EOS_TOKENS + [
+EXTENDED_BANNED_TOKENS = UPSTREAM_BANNED_TOKENS + [
     'question:', ' question:', 'answer:', ' answer:', 'q:',
     'Questions:', ' Questions:', 'Answers:', ' Answers:',
     'questions:', ' questions:', 'answers:', ' answers:'
@@ -99,6 +119,15 @@ EXTENDED_EOS_TOKENS = UPSTREAM_EOS_TOKENS + [
 
 # Used by --stop_on_turn_marker: rather than banning these, treat them as end-of-sequence
 # so the model may answer in the bare-span format the few-shot prompt demonstrates.
+# These are the ONLY tokens in this file that genuinely become `eos_token_id`, and only
+# when that flag is set.
+#
+# CAUTION: every entry is reduced to its FIRST token id by _first_token_id, so a marker
+# must tokenize to one whole word. The space-prefixed forms are safe (' Answers:' ->
+# [' Answers', ':']); the bare plural is not ('Answers:' -> ['An', 'swers', ':'], so it
+# would stop on 'An' and truncate any answer starting "An..."). Verify before adding to
+# --turn_marker_tokens. Note this list omits the plural forms the model actually emits,
+# so --stop_on_turn_marker alone does not stop an ' Answers:' loop.
 TURN_MARKER_TOKENS = ['Question:', ' Question:', 'question:', ' question:',
                       'Answer:', ' Answer:', 'answer:', ' answer:']
 
@@ -122,7 +151,9 @@ class GenerationExperiment:
         self._load_model_and_tokenizer()
         self._build_dataloader()
         self._build_generation_controls()
-        self._load_metrics()
+        # REMOVED - CHANGED FROM UPSTREAM: upstream loaded the rouge and exact_match
+        # metrics here. They moved to new_score_accuracy.py along with the scoring they
+        # served, so this stage no longer needs `evaluate` at construction time.
 
     # ------------------------------------------------------------------ setup
 
@@ -184,9 +215,13 @@ class GenerationExperiment:
         """Decide how generation is stopped: ban the turn markers, or stop on them."""
         self.period_token_id = self._first_token_id('. ')
 
-        eos_tokens = (UPSTREAM_EOS_TOKENS if self.args.ban_list == 'upstream'
-                      else EXTENDED_EOS_TOKENS)
-        self.question_framing_ids = [[self._first_token_id(t)] for t in eos_tokens]
+        # RENAMED FROM UPSTREAM: `eos_tokens` -> `banned_tokens` and
+        # `question_framing_ids` -> `banned_token_ids`. Same values and same behaviour as
+        # generate.py; only the names change, to say what these actually do (they feed
+        # `bad_words_ids`, not `eos_token_id`).
+        banned_tokens = (UPSTREAM_BANNED_TOKENS if self.args.ban_list == 'upstream'
+                         else EXTENDED_BANNED_TOKENS)
+        self.banned_token_ids = [[self._first_token_id(t)] for t in banned_tokens]
 
         # The marker token that ends generation decodes as e.g. ' Question', so
         # _decode_completion strips the bare word. Derived from the marker list rather
@@ -202,11 +237,11 @@ class GenerationExperiment:
             # '\n' is still banned - it is a formatting artifact, not a turn marker, and
             # without it the model restarts the few-shot preamble.
             marker_ids = sorted({self._first_token_id(t) for t in self.args.turn_marker_tokens}) # Sorting and set are cosmetic
-            self.stop_kwargs = {'eos_token_id': [self.period_token_id] + marker_ids,
+            self.generation_control_kwargs = {'eos_token_id': [self.period_token_id] + marker_ids,
                                 'bad_words_ids': [[self._first_token_id('\n')]]}
         else:
-            self.stop_kwargs = {'eos_token_id': self.period_token_id,
-                                'bad_words_ids': self.question_framing_ids}
+            self.generation_control_kwargs = {'eos_token_id': self.period_token_id,
+                                'bad_words_ids': self.banned_token_ids}
 
     def _decode_completion(self, sequence, prompt_length):
         """Decode the generated continuation, minus the prompt.
@@ -224,10 +259,6 @@ class GenerationExperiment:
                     return stripped[:-len(word)].rstrip()
 
         return text
-
-    def _load_metrics(self):
-        self.rouge = evaluate.load('rouge')
-        self.exact_match_metric = evaluate.load('exact_match')
 
     # ------------------------------------------------------------- generation
 
@@ -254,7 +285,7 @@ class GenerationExperiment:
                                        num_return_sequences=2,
                                        do_sample=False,
                                        max_length=self._max_length_for(input_ids),
-                                       **self.stop_kwargs)
+                                       **self.generation_control_kwargs)
 
         if self.args.decoding_method == 'greedy':
             # HF rejects num_return_sequences > 1 when num_beams == 1 and do_sample is
@@ -273,7 +304,7 @@ class GenerationExperiment:
                                        num_beams=1,
                                        do_sample=False,
                                        max_length=self._max_length_for(input_ids),
-                                       **self.stop_kwargs)
+                                       **self.generation_control_kwargs)
 
         raise ValueError(f'unknown decoding_method {self.args.decoding_method!r}')
 
@@ -284,7 +315,7 @@ class GenerationExperiment:
                              max_length=self._max_length_for(input_ids),
                              temperature=self.args.temperature,
                              top_p=self.args.top_p,
-                             **self.stop_kwargs)
+                             **self.generation_control_kwargs)
 
         generations = torch.ones((number_of_generations, self._max_length_for(input_ids)),
                                  dtype=torch.long,
@@ -311,31 +342,11 @@ class GenerationExperiment:
 
     # ---------------------------------------------------------------- scoring
 
-    def _reference_answers(self, batch):
-        if self.args.dataset == 'coqa':
-            return batch['answer']['text'] + [x[0] for x in batch['additional_answers']]
-        return batch['answer']
-
-    def score_against_references(self, sequence_dict, batch):
-        """Correctness labels. analyze_results.py uses rougeL_to_target > 0.3."""
-        sequence_dict['exact_match'] = 0.0
-        for rouge_type in ROUGE_TYPES:
-            sequence_dict[rouge_type + '_to_target'] = 0.0
-
-        for answer in self._reference_answers(batch):
-            predictions = [sequence_dict['most_likely_generation'].lstrip()]
-            references = [answer]
-
-            results = self.exact_match_metric.compute(predictions=predictions,
-                                                      references=references,
-                                                      ignore_case=True,
-                                                      ignore_punctuation=True)
-            sequence_dict['exact_match'] = max(results['exact_match'], sequence_dict['exact_match'])
-
-            rouge_results = self.rouge.compute(predictions=predictions, references=references)
-            for rouge_type in ROUGE_TYPES:
-                sequence_dict[rouge_type + '_to_target'] = max(
-                    rouge_results[rouge_type], sequence_dict[rouge_type + '_to_target'])
+    # REMOVED - CHANGED FROM UPSTREAM: _reference_answers and
+    # score_against_references moved to new_score_accuracy.py. Upstream scored
+    # correctness here, during generation, which is before cleaning runs - so
+    # ROUGE compared a ~171-word ramble against a 1-3 word answer and produced
+    # 0/40 correct. Scoring now happens after clean_generated_strings_improved.py.
 
     def _build_sequence_dict(self, batch, input_ids, generations, index):
         if self.args.dataset == 'coqa':
@@ -408,7 +419,6 @@ class GenerationExperiment:
                         [x[0] for x in batch['additional_answers']] if self.args.dataset == 'coqa'
                         else None)
 
-                    self.score_against_references(sequence_dict, batch)
                     sequences.append(sequence_dict)
 
         return sequences
@@ -455,27 +465,28 @@ class GenerationExperiment:
             print(f'  sampled generations ({len(sample["generated_texts"])}):')
             for j, text in enumerate(sample['generated_texts']):
                 print(f'    {j}: {text!r}')
-            print(f'  exact_match      : {sample["exact_match"]}')
-            for rouge_type in ROUGE_TYPES:
-                print(f'  {rouge_type}_to_target : {sample[rouge_type + "_to_target"]:.4f}')
-            # analyze_results.py defines correctness as rougeL_to_target > 0.3
-            print(f'  -> correct (rougeL > 0.3): {sample["rougeL_to_target"] > 0.3}')
+            # CHANGED FROM UPSTREAM: correctness is no longer known at this stage.
+            # See new_score_accuracy.py, which scores after cleaning.
             print(f'  prompt tensor     : {describe(sample["prompt"])}')
             print(f'  generations tensor: {describe(sample["generations"])}')
 
     @staticmethod
     def summarise(sequences):
-        """One line of aggregates so runs can be compared without opening the pickle."""
-        rouge_l = np.array([s['rougeL_to_target'] for s in sequences])
+        """One line of aggregates so runs can be compared without opening the pickle.
+
+        CHANGED FROM UPSTREAM: the accuracy aggregates
+        (accuracy_rougeL_over_0.3, n_correct, mean_rougeL_to_target,
+        mean_exact_match) moved to new_score_accuracy.py, which scores after
+        cleaning. Only generation-side statistics remain. max_answer_words is new
+        and is here because a value equal to --max_length_of_generated_sequence is
+        the signature of a generation that never stopped.
+        """
         answer_words = np.array([len(s['most_likely_generation'].split()) for s in sequences])
         return {
             'n_questions': len(sequences),
-            'accuracy_rougeL_over_0.3': float((rouge_l > 0.3).mean()),
-            'n_correct': int((rouge_l > 0.3).sum()),
-            'mean_rougeL_to_target': float(rouge_l.mean()),
-            'mean_exact_match': float(np.mean([s['exact_match'] for s in sequences])),
             'mean_answer_words': float(answer_words.mean()),
             'median_answer_words': float(np.median(answer_words)),
+            'max_answer_words': int(answer_words.max()),
         }
 
 

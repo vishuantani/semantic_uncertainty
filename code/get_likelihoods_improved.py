@@ -78,6 +78,63 @@ class NegLogLikelihood:
         return output
 
 
+    def _sequence_ids(self, sequence, field):
+        """Prefer the cleaned ids when the cleaning stage produced them.
+
+        NEW - NO UPSTREAM EQUIVALENT. Upstream read
+        most_likely_generation_ids / second_most_likely_generation_ids raw and
+        passed them straight to get_neg_log_likelihood_for_generation, so the NLL
+        was averaged over a ~171-word repetition loop - which then fed the margin
+        measure. The tensor returned here also becomes 'sequence_embeddings' and
+        'most_likely_sequence_embedding' below, so this affects more than the NLL.
+
+        CHANGED FROM UPSTREAM - padding, stated correctly. An earlier version of
+        this docstring claimed "the raw ids never had padding". That is false:
+        beam search with num_return_sequences=2 pads both returned beams out to
+        the longer of the two whenever they finish at different lengths, which is
+        exactly the situation --ban_list extended and --stop_on_turn_marker are
+        designed to create. Upstream never stripped those pads, so upstream's
+        average_neg_log_likelihood_of_*_likely_gen averaged over them.
+        We therefore strip pads ONLY on the cleaned path, where the padding is our
+        own artifact (build_cleaned_ids re-pads the cleaned completion back out to
+        the original width) and stripping is required for the loss to be per real
+        token. The raw fallback is left byte-identical to upstream, padding
+        included, so running this stage over an UNCLEANED pickle still reproduces
+        the published number instead of silently deviating from it.
+
+        CHANGED FROM UPSTREAM - degenerate cleaned sequences. If a beam output
+        opens with a filter string ('.' or '\\n', say), filter_generated_text
+        truncates it to '' and build_cleaned_ids yields prompt-plus-padding only.
+        After the strip that tensor equals the prompt, so
+        target_ids[:prompt_len] = -100 masks every label and the model returns a
+        nan loss. Upstream could not hit this (it never cleaned these fields). The
+        nan would flow into average_neg_log_likelihood_of_{most,second_most}_
+        likely_gen, get stacked by compute_confidence_measure_improved.py, and
+        finally make roc_auc_score raise "Input contains NaN" three stages later.
+        The cleaning stage's n_empty_after_cleaning shows these empties do occur,
+        so for that one sequence we fall back to the RAW ids: an uncleaned, worse
+        number, but a finite and traceable one rather than a silent nan.
+        """
+        cleaned_key = 'cleaned_' + field
+        # Raw path: no strip. This is upstream's exact input tensor.
+        raw = sequence[field].to(DEVICE)
+
+        if cleaned_key not in sequence:
+            return raw
+
+        cleaned = sequence[cleaned_key].to(DEVICE)
+        # Cleaned path only: strip the padding build_cleaned_ids added back.
+        cleaned = cleaned[cleaned != self.tokenizer.pad_token_id]
+
+        prompt = sequence['prompt'].to(DEVICE)
+        prompt = prompt[prompt != self.tokenizer.pad_token_id]
+        if len(cleaned) <= len(prompt):
+            # Nothing survived cleaning - every label would be masked. Fall back.
+            return raw
+
+        return cleaned
+
+
     def get_neg_loglikelihoods_for_sequence(self, sequence, semantic_set_ids):
         # Pointwise mutual information:
         #   PMI(answer) = log(p(answer|question)) - log(p(answer))
@@ -118,10 +175,14 @@ class NegLogLikelihood:
 
                 pointwise_mutual_information[generation_index] = -generation_output['neg_log_likelihood'] + generation_output['unconditioned_neg_log_likelihood']
 
-            most_likely_generation = sequence['most_likely_generation_ids'].to(DEVICE)
+            # CHANGED FROM UPSTREAM: prefer cleaned ids (stripping only the padding
+            # cleaning itself added), falling back to raw ids when cleaning emptied
+            # the sequence. See _sequence_ids.
+            most_likely_generation = self._sequence_ids(sequence, 'most_likely_generation_ids')
             most_likely_generation_generation_output = self.get_neg_log_likelihood_for_generation(most_likely_generation, len(prompt), most_likely=True)
 
-            second_most_likely_generation = sequence['second_most_likely_generation_ids'].to(DEVICE)
+            # CHANGED FROM UPSTREAM: same treatment as the most-likely ids above.
+            second_most_likely_generation = self._sequence_ids(sequence, 'second_most_likely_generation_ids')
             second_most_likely_generation_generation_output = self.get_neg_log_likelihood_for_generation(second_most_likely_generation, len(prompt), most_likely=True)
 
             sequence_embeddings = torch.stack(sequence_embeddings)
@@ -129,7 +190,16 @@ class NegLogLikelihood:
             result_dict['generations'] = generations
             result_dict['average_neg_log_likelihoods'] = average_neg_log_likelihoods
             result_dict['neg_log_likelihoods'] = neg_log_likelihoods
+            # CHANGED FROM UPSTREAM: this embedding now summarises the CLEANED,
+            # pad-stripped most-likely sequence, where upstream embedded the raw
+            # beam output including its repetition loop. It is not a debug field -
+            # analyze_results.py pickles it out as sequence_embeddings.pkl, so any
+            # downstream consumer of that file sees cleaned-sequence embeddings now.
             result_dict['sequence_embeddings'] = most_likely_generation_generation_output['average_of_last_layer_token_embeddings']
+            # CHANGED FROM UPSTREAM: these are the pad-stripped cleaned ids, so this
+            # field is now variable-length across questions (upstream's were all the
+            # same padded width). It has no consumer today, but a future
+            # torch.stack over it would fail - pad before stacking.
             result_dict['most_likely_sequence_embedding'] = most_likely_generation
             result_dict['average_unconditioned_neg_log_likelihoods'] = average_unconditioned_neg_log_likelihoods
             result_dict['neg_unconditioned_log_likelihoods'] = neg_unconditioned_log_likelihoods
@@ -196,7 +266,15 @@ class NegLogLikelihood:
             # trips when the beam outputs and the prompt length fall out of alignment.
             'fraction_most_likely_beats_second': float((most_likely < second).mean()),
             # fp16 overflow surfaces here rather than as a NaN entropy three stages later.
-            'n_non_finite': int((~np.isfinite(np.concatenate([average_nll, nll, pmi]))).sum()),
+            # CHANGED FROM UPSTREAM (this fork's earlier version): the two most-likely
+            # NLLs are now counted too. They were omitted, so a degenerate cleaned
+            # sequence - one masked down to zero labels, yielding a nan loss - passed
+            # this check unnoticed and only surfaced as roc_auc_score's "Input contains
+            # NaN" in analyze_results.py. _sequence_ids now guards against producing
+            # that nan; this counter is the second line of defence, so it can never
+            # reach the analysis silently again.
+            'n_non_finite': int((~np.isfinite(
+                np.concatenate([average_nll, nll, pmi, most_likely, second]))).sum()),
         }
 
 
