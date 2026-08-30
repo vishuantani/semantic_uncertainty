@@ -209,8 +209,12 @@ class GenerationExperiment:
         self.dataloader = torch.utils.data.DataLoader(questions, batch_size=1)
 
     def _first_token_id(self, text):
-        """OPT prepends BOS, so index 1 is the first real token of `text`."""
-        return self.tokenizer(text)['input_ids'][1]
+        """
+        OPT normally prepends BOS, so index 1 is the first real token of `text`.
+        Return the first non-BOS ID
+        """
+        ids = self.tokenizer(text)['input_ids']
+        return ids[1] if ids and ids[0] == self.tokenizer.bos_token_id else ids[0]
 
     def _token_ids_without_bos(self, text):
         ids = self.tokenizer(text)['input_ids']
@@ -255,8 +259,7 @@ class GenerationExperiment:
         banned_tokens = (UPSTREAM_BANNED_TOKENS if self.args.ban_list == 'upstream'
                          else EXTENDED_BANNED_TOKENS)
         # Throw an error if any of the banned tokens are multiple tokens in length
-        self._validate_single_token_markers(banned_tokens,
-                                            f'--ban_list {self.args.ban_list}')
+        self._validate_single_token_markers(banned_tokens, f'--ban_list {self.args.ban_list}')
         self.banned_token_ids = [[self._first_token_id(t)] for t in banned_tokens]
 
         self.period_token_id = self._first_token_id('. ')
