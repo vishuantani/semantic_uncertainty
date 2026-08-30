@@ -138,3 +138,6 @@ output/*
 wandb/*
 code/wandb/*
 code/data/*
+
+# Claude
+docs/superpowers/*
