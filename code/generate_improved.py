@@ -113,8 +113,9 @@ UPSTREAM_BANNED_TOKENS = ['Question:', ' Question:', '\n', 'Answer:', ' Answer:'
 # the few-shot format and do not need these extra entries.
 EXTENDED_BANNED_TOKENS = UPSTREAM_BANNED_TOKENS + [
     'question:', ' question:', 'answer:', ' answer:', 'q:',
-    'Questions:', ' Questions:', 'Answers:', ' Answers:',
-    'questions:', ' questions:', 'answers:', ' answers:'
+    ' Questions:', ' Answers:',
+    ' questions:', ' answers:'
+    # 'Questions:', 'Answers:', 'questions:', 'answers:',  # These here cause tokenising issues: they break up as multiple tokens (eg. "Answers:" is broken into "An" + whatever) and silently, only the first token is picked, banning unwanted tokens and not banning the ones we want. The space prefixed ones work fine
 ]
 
 # Used by --stop_on_turn_marker: rather than banning these, treat them as end-of-sequence
@@ -208,20 +209,60 @@ class GenerationExperiment:
         self.dataloader = torch.utils.data.DataLoader(questions, batch_size=1)
 
     def _first_token_id(self, text):
-        """OPT prepends BOS, so index 1 is the first real token of `text`."""
-        return self.tokenizer(text)['input_ids'][1]
+        """
+        OPT normally prepends BOS, so index 1 is the first real token of `text`.
+        Return the first non-BOS ID
+        """
+        ids = self.tokenizer(text)['input_ids']
+        return ids[1] if ids and ids[0] == self.tokenizer.bos_token_id else ids[0]
+
+    def _token_ids_without_bos(self, text):
+        ids = self.tokenizer(text)['input_ids']
+        return ids[1:] if ids and ids[0] == self.tokenizer.bos_token_id else ids
+
+    def _validate_single_token_markers(self, markers, list_name):
+        """Reject markers that do not reduce to exactly one token.
+
+        NEW - NO UPSTREAM EQUIVALENT. _first_token_id keeps only the FIRST token of a
+        marker, so a marker whose word is absent from the BPE vocabulary is silently
+        truncated to a fragment: 'Answers:' tokenizes as ['An', 'swers', ':'], so the ban
+        (or EOS, under --stop_on_turn_marker) lands on 'An'. That bans every bare
+        "An..." while leaving the marker the model actually emits unbanned - the failure
+        is invisible without inspecting token ids. Upstream never checked, which is how
+        three fragmenting entries sat in the extended ban list unnoticed.
+
+        The space-prefixed form is normally the fix: ' Answers' is a single token even
+        though bare 'Answers' is not, and in generated text a turn marker always follows
+        a space anyway.
+        """
+        broken = []
+        for marker in markers:
+            word = marker[:-1] if marker.endswith(':') else marker
+            ids = self._token_ids_without_bos(word)
+            if len(ids) != 1:
+                pieces = [self.tokenizer.decode([i]) for i in ids]
+                broken.append(f'    {marker!r} -> {pieces} ({len(ids)} tokens)')
+
+        if broken:
+            raise ValueError(
+                f'{list_name}: {len(broken)} marker(s) do not tokenize to a single token, '
+                f'so only a fragment would be used:\n' + '\n'.join(broken) +
+                "\n  Use the space-prefixed form (e.g. ' Answers:' not 'Answers:'), or "
+                'drop the entry.')
 
     def _build_generation_controls(self):
         """Decide how generation is stopped: ban the turn markers, or stop on them."""
-        self.period_token_id = self._first_token_id('. ')
-
         # RENAMED FROM UPSTREAM: `eos_tokens` -> `banned_tokens` and
         # `question_framing_ids` -> `banned_token_ids`. Same values and same behaviour as
         # generate.py; only the names change, to say what these actually do (they feed
         # `bad_words_ids`, not `eos_token_id`).
         banned_tokens = (UPSTREAM_BANNED_TOKENS if self.args.ban_list == 'upstream'
                          else EXTENDED_BANNED_TOKENS)
+        # Throw an error if any of the banned tokens are multiple tokens in length
+        self._validate_single_token_markers(banned_tokens, f'--ban_list {self.args.ban_list}')
         self.banned_token_ids = [[self._first_token_id(t)] for t in banned_tokens]
+
+        self.period_token_id = self._first_token_id('. ')
 
         # The marker token that ends generation decodes as e.g. ' Question', so
         # _decode_completion strips the bare word. Derived from the marker list rather
@@ -236,6 +277,10 @@ class GenerationExperiment:
             # model answer as a bare span the way the few-shot examples demonstrate.
             # '\n' is still banned - it is a formatting artifact, not a turn marker, and
             # without it the model restarts the few-shot preamble.
+            # Same fragmentation trap as the ban list, and this list is settable
+            # from the CLI via --turn_marker_tokens, so validate before use.
+            self._validate_single_token_markers(self.args.turn_marker_tokens,
+                                                '--turn_marker_tokens')
             marker_ids = sorted({self._first_token_id(t) for t in self.args.turn_marker_tokens}) # Sorting and set are cosmetic
             self.generation_control_kwargs = {'eos_token_id': [self.period_token_id] + marker_ids,
                                 'bad_words_ids': [[self._first_token_id('\n')]]}
