@@ -98,13 +98,20 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from device_utils import DEVICE, DTYPE
 
+# RENAMED FROM UPSTREAM: generate.py calls this list `eos_tokens`, but it is NOT used
+# as end-of-sequence anywhere. It is passed as `bad_words_ids`, so these tokens are
+# SUPPRESSED - the model is forbidden from ever emitting them. The only real EOS in the
+# default configuration is the period (see _build_generation_controls). The upstream
+# name inverts the actual behaviour, which is what makes the stopping bug hard to see:
+# banning 'Question:' and '\n' removes the very tokens the few-shot format teaches the
+# model to end an answer with, so it cannot terminate and rambles to max_length.
 # The six entries the paper/upstream repo uses.
-UPSTREAM_EOS_TOKENS = ['Question:', ' Question:', '\n', 'Answer:', ' Answer:', 'Q:']
+UPSTREAM_BANNED_TOKENS = ['Question:', ' Question:', '\n', 'Answer:', ' Answer:', 'Q:']
 
 # ISSUE: opt-350m is weak enough to drift into lowercase prose and slip past the
 # upstream list, so it never emits a period and runs to max_length. Larger models hold
 # the few-shot format and do not need these extra entries.
-EXTENDED_EOS_TOKENS = UPSTREAM_EOS_TOKENS + [
+EXTENDED_BANNED_TOKENS = UPSTREAM_BANNED_TOKENS + [
     'question:', ' question:', 'answer:', ' answer:', 'q:',
     'Questions:', ' Questions:', 'Answers:', ' Answers:',
     'questions:', ' questions:', 'answers:', ' answers:'
@@ -112,6 +119,15 @@ EXTENDED_EOS_TOKENS = UPSTREAM_EOS_TOKENS + [
 
 # Used by --stop_on_turn_marker: rather than banning these, treat them as end-of-sequence
 # so the model may answer in the bare-span format the few-shot prompt demonstrates.
+# These are the ONLY tokens in this file that genuinely become `eos_token_id`, and only
+# when that flag is set.
+#
+# CAUTION: every entry is reduced to its FIRST token id by _first_token_id, so a marker
+# must tokenize to one whole word. The space-prefixed forms are safe (' Answers:' ->
+# [' Answers', ':']); the bare plural is not ('Answers:' -> ['An', 'swers', ':'], so it
+# would stop on 'An' and truncate any answer starting "An..."). Verify before adding to
+# --turn_marker_tokens. Note this list omits the plural forms the model actually emits,
+# so --stop_on_turn_marker alone does not stop an ' Answers:' loop.
 TURN_MARKER_TOKENS = ['Question:', ' Question:', 'question:', ' question:',
                       'Answer:', ' Answer:', 'answer:', ' answer:']
 
@@ -199,9 +215,13 @@ class GenerationExperiment:
         """Decide how generation is stopped: ban the turn markers, or stop on them."""
         self.period_token_id = self._first_token_id('. ')
 
-        eos_tokens = (UPSTREAM_EOS_TOKENS if self.args.ban_list == 'upstream'
-                      else EXTENDED_EOS_TOKENS)
-        self.question_framing_ids = [[self._first_token_id(t)] for t in eos_tokens]
+        # RENAMED FROM UPSTREAM: `eos_tokens` -> `banned_tokens` and
+        # `question_framing_ids` -> `banned_token_ids`. Same values and same behaviour as
+        # generate.py; only the names change, to say what these actually do (they feed
+        # `bad_words_ids`, not `eos_token_id`).
+        banned_tokens = (UPSTREAM_BANNED_TOKENS if self.args.ban_list == 'upstream'
+                         else EXTENDED_BANNED_TOKENS)
+        self.banned_token_ids = [[self._first_token_id(t)] for t in banned_tokens]
 
         # The marker token that ends generation decodes as e.g. ' Question', so
         # _decode_completion strips the bare word. Derived from the marker list rather
@@ -217,11 +237,11 @@ class GenerationExperiment:
             # '\n' is still banned - it is a formatting artifact, not a turn marker, and
             # without it the model restarts the few-shot preamble.
             marker_ids = sorted({self._first_token_id(t) for t in self.args.turn_marker_tokens}) # Sorting and set are cosmetic
-            self.stop_kwargs = {'eos_token_id': [self.period_token_id] + marker_ids,
+            self.generation_control_kwargs = {'eos_token_id': [self.period_token_id] + marker_ids,
                                 'bad_words_ids': [[self._first_token_id('\n')]]}
         else:
-            self.stop_kwargs = {'eos_token_id': self.period_token_id,
-                                'bad_words_ids': self.question_framing_ids}
+            self.generation_control_kwargs = {'eos_token_id': self.period_token_id,
+                                'bad_words_ids': self.banned_token_ids}
 
     def _decode_completion(self, sequence, prompt_length):
         """Decode the generated continuation, minus the prompt.
@@ -265,7 +285,7 @@ class GenerationExperiment:
                                        num_return_sequences=2,
                                        do_sample=False,
                                        max_length=self._max_length_for(input_ids),
-                                       **self.stop_kwargs)
+                                       **self.generation_control_kwargs)
 
         if self.args.decoding_method == 'greedy':
             # HF rejects num_return_sequences > 1 when num_beams == 1 and do_sample is
@@ -284,7 +304,7 @@ class GenerationExperiment:
                                        num_beams=1,
                                        do_sample=False,
                                        max_length=self._max_length_for(input_ids),
-                                       **self.stop_kwargs)
+                                       **self.generation_control_kwargs)
 
         raise ValueError(f'unknown decoding_method {self.args.decoding_method!r}')
 
@@ -295,7 +315,7 @@ class GenerationExperiment:
                              max_length=self._max_length_for(input_ids),
                              temperature=self.args.temperature,
                              top_p=self.args.top_p,
-                             **self.stop_kwargs)
+                             **self.generation_control_kwargs)
 
         generations = torch.ones((number_of_generations, self._max_length_for(input_ids)),
                                  dtype=torch.long,
