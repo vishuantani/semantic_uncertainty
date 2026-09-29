@@ -97,12 +97,21 @@ class EntailmentExperiment:
 
         return semantic_set_ids
 
+    def _check_semantic_difference(self, forward, reverse):
+        if self.args.similarity_style == "ENSURE_ENTAILMENT":
+            # If not entailment both sides, then not similar
+            return not (forward == 2 and reverse == 2)
+        else:
+            # If any side is a contradiction, then not similar
+            # This is the default implementation of the repository, but not of the paper
+            return forward == 0 or reverse == 0
+
     def _merge_semantic_sets(self, pair_indices, labels, semantic_set_ids, unique_generated_texts):
         has_semantically_different_answers = False
         deberta_predictions = []
         for (i, j), (forward, reverse) in zip(pair_indices, labels):
             deberta_prediction = 1
-            if forward == 0 or reverse == 0:
+            if self._check_semantic_difference(forward, reverse):
                 has_semantically_different_answers = True
                 deberta_prediction = 0
             else:
@@ -153,7 +162,6 @@ class EntailmentExperiment:
             for batch in encoded_input_batches:
                 with torch.no_grad():
                     batch_pred = self.model(**batch.to(DEVICE))['logits']
-                    # What does **batch do?
                 predicted_labels = torch.argmax(batch_pred, dim=1)
                 chunk_pred_labels.append(predicted_labels)
 
@@ -239,6 +247,7 @@ def parse_args():
 
     parser.add_argument('--generation_model', type=str, default='opt-350m')
     parser.add_argument('--entailment_model', type=str, default='deberta-base-mnli')
+    parser.add_argument('--similarity_style', type=str, default='NOT_CONTRADICTION')
     parser.add_argument('--run_id', type=str, default='run_1')
     parser.add_argument('--seed', type=int, default=10)
 

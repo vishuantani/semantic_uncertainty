@@ -100,10 +100,14 @@ class ConfidenceMeasures:
 
         return mean_of_neg_log_likelihoods
 
-    @staticmethod
-    def get_mean_of_poinwise_mutual_information(pointwise_mutual_information):
+    def get_mean_of_poinwise_mutual_information(self, pointwise_mutual_information):
         """Compute mean of pointwise mutual information"""
         mean_across_models = torch.mean(pointwise_mutual_information, dim=0)
+        if self.args.drop_empty_generations:
+            # Same renormalisation as the entropies: average over the samples that have
+            # a PMI at all. analyze_results.py carries this column but never ranks on it,
+            # so this keeps the reported mean honest rather than unblocking anything.
+            return torch.nanmean(mean_across_models, dim=1)
         return torch.mean(mean_across_models, dim=1)
 
     # This is the Monte Carlo estimate of the entropy per answer: p*log(p) <=> (1/N)*log(p)
@@ -123,12 +127,24 @@ class ConfidenceMeasures:
     #   That is what mean across all models gets to (well, the log of that).
     #   Then entropy is sum over samples as it is the MC estimate of the entropy number in general: p * log(p) estimated by (1 / M) * sum_over_j(log(p_j)) where j represents a sample question
     #   Finally, as it is the generative model that has generated these outputs (s_m), all properties of the output relate back to the generation model
-    @staticmethod
-    def get_predictive_entropy(log_likelihoods):
+    def get_predictive_entropy(self, log_likelihoods):
         """Compute predictive entropy of approximate posterior predictive"""
         mean_across_models = torch.logsumexp(log_likelihoods, dim=0) - torch.log(torch.tensor(log_likelihoods.shape[0]))
-        entropy = -torch.sum(mean_across_models, dim=1) / torch.tensor(mean_across_models.shape[1])
-        return entropy
+
+        if not self.args.drop_empty_generations:
+            entropy = -torch.sum(mean_across_models, dim=1) / torch.tensor(mean_across_models.shape[1])
+            return entropy
+
+        # CHANGED FROM UPSTREAM (--drop_empty_generations). The estimator is a Monte
+        # Carlo average over N samples, so a sample that produced no tokens - and
+        # therefore no likelihood - is dropped from the average rather than allowed to
+        # poison it: divide by the number of samples that stayed finite, not by N. A
+        # question left with nothing finite stays nan, which is the honest answer for it.
+        valid = torch.isfinite(mean_across_models)
+        totals = torch.where(valid, mean_across_models, torch.zeros_like(mean_across_models)).sum(dim=1)
+        counts = valid.sum(dim=1)
+        entropy = -totals / counts.clamp(min=1)
+        return torch.where(counts > 0, entropy, torch.full_like(entropy, float('nan')))
 
     def get_predictive_entropy_over_concepts(self, log_likelihoods, semantic_set_ids):
         """Compute the semantic entropy"""
@@ -143,6 +159,18 @@ class ConfidenceMeasures:
             aggregated_likelihoods = []
             row = mean_across_models[question_id]
             semantic_set_ids_row = semantic_set_ids[question_id]
+
+            # CHANGED FROM UPSTREAM (--drop_empty_generations): drop the samples with no
+            # likelihood before clustering, so an empty generation neither contributes a
+            # nan to its cluster's logsumexp nor counts towards the cluster total that
+            # divides the sum. Same renormalisation as get_predictive_entropy.
+            if self.args.drop_empty_generations:
+                valid = torch.isfinite(row)
+                if not bool(valid.any()):
+                    entropies.append(torch.tensor(float('nan')))
+                    continue
+                row = row[valid]
+                semantic_set_ids_row = semantic_set_ids_row[valid]
             # This is where there is a fallacy that likelihood of a class is estimated as the sum of likelihoods of the samples in that class
             #   But that is a biased estimator - read explainer/estimating-semantic-entropy.html
             for semantic_set_id in torch.unique(semantic_set_ids_row):
@@ -153,21 +181,67 @@ class ConfidenceMeasures:
 
         return torch.tensor(entropies)
 
-    @staticmethod
-    def get_margin_probability_uncertainty_measure(log_likelihoods):
+    def get_margin_probability_uncertainty_measure(self, log_likelihoods):
         """Compute margin probability uncertainty measure"""
         mean_across_models = torch.logsumexp(log_likelihoods, dim=0) - torch.log(torch.tensor(log_likelihoods.shape[0]))
+        if self.args.drop_empty_generations:
+            # topk cannot rank a nan, so send the dropped samples to -inf: they sort last
+            # and exp(-inf) is 0, leaving the margin taken between real generations.
+            mean_across_models = torch.where(torch.isfinite(mean_across_models),
+                                             mean_across_models,
+                                             torch.full_like(mean_across_models, float('-inf')))
         topk_likelihoods, indices = torch.topk(mean_across_models, 2, dim=1, sorted=True)
         margin_probabilities = np.exp(topk_likelihoods[:, 0]) - np.exp(topk_likelihoods[:, 1])
 
         return margin_probabilities
 
     @staticmethod
-    def get_number_of_unique_elements_per_row(tensor):
+    def get_number_of_unique_elements_per_row(tensor, valid=None):
         assert len(tensor.shape) == 2
-        return torch.count_nonzero(torch.sum(torch.nn.functional.one_hot(tensor), dim=1), dim=1)
+        one_hot = torch.nn.functional.one_hot(tensor)
+        if valid is not None:
+            # CHANGED FROM UPSTREAM (--drop_empty_generations): a sample excluded from
+            # the entropy must not contribute a cluster to the count either, or the same
+            # generation is dropped by one measure and counted by another.
+            one_hot = one_hot * valid.unsqueeze(-1).to(one_hot.dtype)
+        return torch.count_nonzero(torch.sum(one_hot, dim=1), dim=1)
+
+    def _order_valid_samples_first(self, overall_results):
+        """Move dropped samples to the end of each question's row.
+
+        NEW - NO UPSTREAM EQUIVALENT. The subset measures below read the FIRST i samples
+        of each row, so a question whose empty sample sits at index 0 would have nothing
+        finite in subset_1 and stay nan there even after the full-row measures recovered
+        - and analyze_results.py ranks on every subset, so that nan crashes it just as
+        the original did. Dropping a sample has to mean it is not in the sequence at all,
+        so the survivors close up and subset_i reads 'the estimate from i usable
+        samples'. Every full-row measure is a sum or a logsumexp over the whole row, so
+        the reordering cannot move any of them.
+        """
+        valid = torch.isfinite(overall_results['average_neg_log_likelihoods']).all(dim=0)
+        if bool(valid.all()):
+            return overall_results
+
+        # Stable argsort on the invalid flag puts False (0) first and leaves the
+        # surviving samples in their original relative order.
+        order = torch.argsort((~valid).to(torch.int64), dim=1, stable=True)
+
+        for key in ('average_neg_log_likelihoods', 'neg_log_likelihoods',
+                    'pointwise_mutual_information', 'semantic_set_ids'):
+            tensor = overall_results[key]
+            overall_results[key] = torch.gather(tensor, 2, order.unsqueeze(0).expand_as(tensor))
+
+        return overall_results
 
     def compute(self, overall_results):
+        # Sample validity is read off the likelihoods, which get_likelihoods_improved.py
+        # sets to nan for a generation that produced no tokens.
+        if self.args.drop_empty_generations:
+            overall_results = self._order_valid_samples_first(overall_results)
+            valid_samples = torch.isfinite(overall_results['average_neg_log_likelihoods']).all(dim=0)
+        else:
+            valid_samples = None
+
         predictive_entropy = self.get_predictive_entropy(-overall_results['neg_log_likelihoods'])
         predictive_entropy_over_concepts = self.get_predictive_entropy_over_concepts(
             -overall_results['average_neg_log_likelihoods'], overall_results['semantic_set_ids'])
@@ -179,7 +253,8 @@ class ConfidenceMeasures:
         unnormalised_margin_measures = self.get_margin_probability_uncertainty_measure(
             -overall_results['neg_log_likelihoods'])
 
-        number_of_semantic_sets = self.get_number_of_unique_elements_per_row(overall_results['semantic_set_ids'][0])
+        number_of_semantic_sets = self.get_number_of_unique_elements_per_row(
+            overall_results['semantic_set_ids'][0], valid_samples)
         average_predictive_entropy = self.get_predictive_entropy(-overall_results['average_neg_log_likelihoods'])
 
         average_predictive_entropy_on_subsets = []
@@ -197,7 +272,9 @@ class ConfidenceMeasures:
                     -overall_results['average_neg_log_likelihoods'][:, :, :int(i)],
                     overall_results['semantic_set_ids'][:, :, :int(i)]))
             number_of_semantic_sets_on_subsets.append(
-                self.get_number_of_unique_elements_per_row(overall_results['semantic_set_ids'][0][:, :i]))
+                self.get_number_of_unique_elements_per_row(
+                    overall_results['semantic_set_ids'][0][:, :i],
+                    None if valid_samples is None else valid_samples[:, :i]))
 
         average_pointwise_mutual_information = self.get_mean_of_poinwise_mutual_information(
             overall_results['pointwise_mutual_information'])
@@ -280,6 +357,12 @@ class ConfidenceMeasures:
             'fraction_margin_near_zero': float((np.abs(margin_measures) < 1e-6).mean()),
             'n_non_finite': int((~np.isfinite(np.concatenate(
                 [predictive_entropy, average_predictive_entropy, semantic_entropy]))).sum()),
+            # How many questions had at least one sample excluded from their entropy.
+            # Their estimates rest on fewer than n_generations samples, so a rising count
+            # means the Monte Carlo estimate is thinning even while n_non_finite reads 0.
+            'n_questions_with_dropped_samples': int(
+                (~np.isfinite(numpy('average_neg_log_likelihoods')[0])).any(axis=1).sum()),
+            'dropped_samples_renormalised': bool(self.args.drop_empty_generations),
         }
 
 
@@ -290,6 +373,12 @@ def parse_args():
     parser.add_argument('--run_id', type=str, default='run_1')
     parser.add_argument('--seed', type=int, default=10)
     parser.add_argument('--llh_shift', type=float, default=5.0)
+    parser.add_argument('--drop_empty_generations', action='store_true',
+                        help="Renormalise each question's entropy over the samples whose "
+                             'likelihood is finite, instead of dividing by N and letting '
+                             'one empty generation turn the whole question nan. Pair with '
+                             'the same flag on the likelihoods stage. Watch '
+                             'n_questions_with_dropped_samples.')
     args = parser.parse_args()
 
     return args

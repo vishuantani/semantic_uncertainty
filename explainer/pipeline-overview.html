@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seven Stages, Two Models</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+  :root{
+    --ground:#FBFBFC; --surface:#FFFFFF; --surface-2:#F3F4F8;
+    --ink:#14161C; --ink-2:#4A4F5C; --ink-3:#7B8290;
+    --rule:#DCDEE6; --rule-soft:#EBECF2;
+    --neural:#3F3AA6; --neural-soft:#EDECFA; --neural-ink:#3F3AA6;
+    --delta:#A84A18; --delta-soft:#FAEFE7;
+    --serif:'Spectral',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E1014; --surface:#161920; --surface-2:#1D212A;
+      --ink:#E8E9EC; --ink-2:#A6ACBA; --ink-3:#767D8C;
+      --rule:#2A2F3A; --rule-soft:#20242D;
+      --neural:#9A96F5; --neural-soft:#1D1C36; --neural-ink:#ADAAFA;
+      --delta:#E4915C; --delta-soft:#2C1D12;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E1014; --surface:#161920; --surface-2:#1D212A;
+    --ink:#E8E9EC; --ink-2:#A6ACBA; --ink-3:#767D8C;
+    --rule:#2A2F3A; --rule-soft:#20242D;
+    --neural:#9A96F5; --neural-soft:#1D1C36; --neural-ink:#ADAAFA;
+    --delta:#E4915C; --delta-soft:#2C1D12;
+  }
+
+  html{-webkit-text-size-adjust:100%}
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--serif); font-size:17px; line-height:1.62;
+    margin:0; padding:0 0 6rem;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:76rem;margin:0 auto;padding:0 clamp(1rem,4vw,3rem)}
+  .col{max-width:37rem}
+  p{margin:0 0 1.1em}
+  a{color:var(--neural-ink)}
+  a:focus-visible,summary:focus-visible{outline:2px solid var(--neural);outline-offset:3px;border-radius:2px}
+  code{font-family:var(--mono);font-size:.86em;color:var(--ink-2)}
+  em{font-style:italic}
+  strong{font-weight:600}
+
+  /* ---- paper header ---- */
+  header.paper{padding:clamp(3rem,8vh,6rem) 0 0}
+  .eyebrow{
+    font-family:var(--sans);font-size:11px;font-weight:600;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+    margin:0 0 1.4rem;
+  }
+  h1{
+    font-family:var(--serif);font-weight:600;font-size:clamp(2.1rem,5.2vw,3.1rem);
+    line-height:1.08;letter-spacing:-.015em;margin:0 0 .6rem;text-wrap:balance;
+    max-width:20ch;
+  }
+  .dek{
+    font-family:var(--serif);font-size:clamp(1.05rem,2vw,1.22rem);font-style:italic;
+    color:var(--ink-2);margin:0 0 2rem;max-width:44ch;line-height:1.5;
+  }
+  .meta{
+    display:flex;flex-wrap:wrap;gap:0 2.2rem;
+    border-top:1px solid var(--ink);border-bottom:1px solid var(--rule);
+    padding:.85rem 0;margin:0 0 2.4rem;
+  }
+  .meta div{font-family:var(--sans);font-size:12px;line-height:1.5;padding:.15rem 0}
+  .meta dt{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+  .meta dd{margin:0;font-family:var(--mono);font-size:12px;color:var(--ink)}
+  .abstract{
+    max-width:41rem;border-left:2px solid var(--rule);padding-left:1.6rem;
+    font-size:16px;color:var(--ink-2);margin:0 0 1rem;
+  }
+  .abstract b{color:var(--ink);font-weight:600}
+
+  /* ---- sections ---- */
+  section{margin:clamp(3.5rem,9vh,6rem) 0 0}
+  h2{
+    font-family:var(--serif);font-weight:600;font-size:1.55rem;line-height:1.2;
+    margin:0 0 .35rem;letter-spacing:-.01em;text-wrap:balance;
+  }
+  h2 .num{
+    font-family:var(--mono);font-size:.72em;font-weight:400;color:var(--ink-3);
+    margin-right:.7em;
+  }
+  .sub{font-family:var(--sans);font-size:13.5px;color:var(--ink-3);margin:0 0 1.6rem;max-width:46ch}
+  h3{font-family:var(--sans);font-size:13px;font-weight:600;letter-spacing:.04em;margin:2rem 0 .5rem;color:var(--ink)}
+
+  /* ---- figures ---- */
+  figure{margin:0 0 1rem;display:flex;flex-direction:column;gap:.9rem}
+  .plate{
+    background:var(--surface);border:1px solid var(--rule);border-radius:5px;
+    padding:1.4rem 1.2rem;overflow-x:auto;
+  }
+  .plate svg{display:block;min-width:960px;width:100%;height:auto}
+  .plate.wide svg{min-width:1240px}
+  figcaption{
+    font-family:var(--serif);font-size:14.5px;line-height:1.5;color:var(--ink-2);
+    max-width:44rem;
+  }
+  figcaption b{
+    font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--ink);margin-right:.7em;
+  }
+  .legend{
+    display:flex;flex-wrap:wrap;gap:.35rem 1.5rem;
+    font-family:var(--sans);font-size:11.5px;color:var(--ink-2);
+  }
+  .legend span{display:inline-flex;align-items:center;gap:.45rem}
+  .swatch{width:11px;height:11px;border-radius:2px;flex:none}
+  .sw-neural{background:var(--neural-soft);border:1.4px solid var(--neural)}
+  .sw-plain{background:var(--surface-2);border:1.4px solid var(--rule)}
+  .sw-delta{background:var(--delta);border-radius:50%;width:9px;height:9px}
+  .sw-write{background:var(--ink);border-radius:50%;width:9px;height:9px}
+  .sw-read{background:var(--surface);border:1.6px solid var(--ink-2);border-radius:50%;width:9px;height:9px}
+
+  /* ---- svg primitives ---- */
+  .s-fill{fill:var(--surface)}
+  .s-fill-2{fill:var(--surface-2)}
+  .s-rule{fill:none;stroke:var(--rule);stroke-width:1.2}
+  .s-rule-soft{stroke:var(--rule-soft);stroke-width:1}
+  .s-band{fill:var(--rule-soft)}
+  .n-fill{fill:var(--neural-soft)}
+  .n-stroke{stroke:var(--neural);stroke-width:1.4;fill:none}
+  .n-text{fill:var(--neural-ink)}
+  .d-fill{fill:var(--delta-soft)}
+  .d-stroke{stroke:var(--delta);stroke-width:1.3;fill:none;stroke-dasharray:4 3}
+  .d-text{fill:var(--delta)}
+  .d-dot{fill:var(--delta)}
+  .t{font-family:var(--sans);fill:var(--ink)}
+  .t2{font-family:var(--sans);fill:var(--ink-2)}
+  .t3{font-family:var(--sans);fill:var(--ink-3)}
+  .m{font-family:var(--mono);fill:var(--ink)}
+  .m2{font-family:var(--mono);fill:var(--ink-2)}
+  .cap{font-family:var(--sans);font-size:8.5px;font-weight:600;letter-spacing:.11em}
+  .b6{font-weight:600}
+  .arrow{stroke:var(--ink-2);stroke-width:1.3;fill:none}
+  .arrowhead{fill:var(--ink-2)}
+  .dashline{stroke:var(--rule);stroke-width:1.1;stroke-dasharray:3 3;fill:none}
+  .life{stroke:var(--ink-3);stroke-width:1.4;fill:none}
+  .dot-w{fill:var(--ink)}
+  .dot-r{fill:var(--surface);stroke:var(--ink-2);stroke-width:1.5}
+
+  /* ---- tables ---- */
+  .tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:5px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;min-width:860px;font-family:var(--sans);font-size:12.5px}
+  th{
+    text-align:left;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--ink-3);font-weight:600;padding:.85rem .9rem;
+    border-bottom:1px solid var(--ink);white-space:nowrap;
+  }
+  td{padding:.75rem .9rem;border-bottom:1px solid var(--rule-soft);vertical-align:top;color:var(--ink-2)}
+  tr:last-child td{border-bottom:0}
+  td.k{font-family:var(--mono);color:var(--ink);white-space:nowrap}
+  td.n{font-family:var(--mono);color:var(--ink-3);font-size:11.5px}
+  td.f{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);line-height:1.75}
+  .pill{
+    display:inline-block;font-family:var(--mono);font-size:11px;padding:.15rem .45rem;
+    border-radius:3px;white-space:nowrap;
+  }
+  .pill-n{background:var(--neural-soft);color:var(--neural-ink);border:1px solid var(--neural)}
+  .pill-p{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--rule)}
+
+  /* ---- measure list ---- */
+  .measures{display:grid;grid-template-columns:repeat(auto-fit,minmax(19rem,1fr));gap:0;
+    border:1px solid var(--rule);border-radius:5px;background:var(--surface);overflow:hidden}
+  .measure{padding:.95rem 1.1rem;border-bottom:1px solid var(--rule-soft);border-right:1px solid var(--rule-soft)}
+  .measure .name{font-family:var(--mono);font-size:12px;color:var(--ink);display:block;margin-bottom:.2rem}
+  .measure .what{font-family:var(--sans);font-size:12px;color:var(--ink-2);line-height:1.5}
+
+  /* ---- delta list ---- */
+  .deltas{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1.5rem}
+  .deltas li{padding-left:1.5rem;position:relative;max-width:44rem}
+  .deltas li::before{
+    content:"";position:absolute;left:0;top:.6em;width:8px;height:8px;
+    border-radius:50%;background:var(--delta);
+  }
+  .deltas h4{font-family:var(--sans);font-size:13.5px;font-weight:600;margin:0 0 .3rem;color:var(--ink)}
+  .deltas p{font-size:15px;color:var(--ink-2);margin:0}
+
+  pre{
+    font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--surface-2);
+    border:1px solid var(--rule);border-radius:5px;padding:1.1rem 1.2rem;overflow-x:auto;
+    color:var(--ink-2);margin:0 0 1rem;
+  }
+  pre b{color:var(--ink);font-weight:500}
+  .foot{
+    margin-top:clamp(3.5rem,8vh,5rem);padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-family:var(--sans);font-size:12px;color:var(--ink-3);max-width:46rem;
+  }
+  text.n-text{fill:var(--neural-ink)}
+  text.d-text{fill:var(--delta)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="paper">
+  <p class="eyebrow">Pipeline reference · semantic_uncertainty fork</p>
+  <h1>Seven Stages, Two Models</h1>
+  <p class="dek">How a question becomes a semantic-entropy score, and exactly where a neural network runs along the way.</p>
+
+  <dl class="meta">
+    <div><dt>Generator</dt><dd>facebook/opt-350m</dd></div>
+    <div><dt>Entailment</dt><dd>microsoft/deberta-base-mnli</dd></div>
+    <div><dt>Dataset</dt><dd>trivia_qa · rc.nocontext</dd></div>
+    <div><dt>Sample</dt><dd>40 questions × 5 generations</dd></div>
+    <div><dt>Orchestrator</dt><dd>code/run_pipeline.py</dd></div>
+  </dl>
+
+  <div class="abstract">
+    <p>The pipeline turns one trivia question into a number that predicts whether the model got it wrong. It does this in seven ordered stages. <b>Only three of them run a neural network</b>: the generator produces answers, an entailment model decides which answers mean the same thing, and the generator is loaded a second time to score the likelihood of what it already said. The other four stages are string surgery, ROUGE, tensor algebra, and <code>roc_auc_score</code>.</p>
+    <p>Everything below traces the mechanism of the <em>_improved</em> stack in this fork, which reorders one stage and re-scopes two others relative to the <a href="https://arxiv.org/abs/2302.09664">2023 ICLR implementation</a> it is forked from. Those departures are marked in rust throughout.</p>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">01</span>The pipeline end to end</h2>
+  <p class="sub">Seven stages, the compute each one needs, and the files that carry state between them.</p>
+
+  <figure>
+    <div class="plate wide">
+      <svg viewBox="0 0 1320 600" role="img" aria-label="Seven pipeline stages left to right: generate, clean, score, similarities, likelihoods, confidence, analyze. Above each stage is the model or compute it uses; only generate, similarities and likelihoods run a neural network. Below, horizontal lifelines show which file each stage writes and which stages later read it.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path class="arrowhead" d="M0,1 L9,5 L0,9 z"/>
+          </marker>
+        </defs>
+
+        <!-- phase bands -->
+        <rect class="s-band" x="24"   y="8" width="152" height="20" rx="3"/>
+        <rect class="s-band" x="192"  y="8" width="320" height="20" rx="3"/>
+        <rect class="s-band" x="528"  y="8" width="488" height="20" rx="3"/>
+        <rect class="s-band" x="1032" y="8" width="152" height="20" rx="3"/>
+        <text class="t3 cap" x="100"  y="22" text-anchor="middle">GENERATE</text>
+        <text class="t3 cap" x="352"  y="22" text-anchor="middle">CONDITION THE TEXT</text>
+        <text class="t3 cap" x="772"  y="22" text-anchor="middle">MEASURE</text>
+        <text class="t3 cap" x="1108" y="22" text-anchor="middle">EVALUATE</text>
+
+        <!-- compute lane -->
+        <rect class="n-fill" x="24"  y="44" width="152" height="80" rx="4"/><rect class="n-stroke" x="24"  y="44" width="152" height="80" rx="4"/>
+        <text class="n-text cap" x="100" y="66" text-anchor="middle">GENERATION MODEL</text>
+        <text class="m n-text" x="100" y="88" text-anchor="middle" font-size="12.5" font-weight="500">opt-350m</text>
+        <text class="t2" x="100" y="105" text-anchor="middle" font-size="9.5">beam search ×5 beams</text>
+        <text class="t2" x="100" y="118" text-anchor="middle" font-size="9.5">+ sampling ×5</text>
+
+        <rect class="s-fill-2" x="192" y="44" width="152" height="80" rx="4"/><rect class="s-rule" x="192" y="44" width="152" height="80" rx="4"/>
+        <text class="t3 cap" x="268" y="66" text-anchor="middle">TOKENIZER ONLY</text>
+        <text class="m2" x="268" y="88" text-anchor="middle" font-size="12.5">opt-350m tok</text>
+        <text class="t2" x="268" y="105" text-anchor="middle" font-size="9.5">string truncation,</text>
+        <text class="t2" x="268" y="118" text-anchor="middle" font-size="9.5">re-tokenize on CPU</text>
+
+        <rect class="s-fill-2" x="360" y="44" width="152" height="80" rx="4"/><rect class="s-rule" x="360" y="44" width="152" height="80" rx="4"/>
+        <text class="t3 cap" x="436" y="66" text-anchor="middle">METRICS</text>
+        <text class="m2" x="436" y="88" text-anchor="middle" font-size="12.5">evaluate</text>
+        <text class="t2" x="436" y="105" text-anchor="middle" font-size="9.5">ROUGE-1/2/L and</text>
+        <text class="t2" x="436" y="118" text-anchor="middle" font-size="9.5">exact match</text>
+
+        <rect class="n-fill" x="528" y="44" width="152" height="80" rx="4"/><rect class="n-stroke" x="528" y="44" width="152" height="80" rx="4"/>
+        <text class="n-text cap" x="604" y="66" text-anchor="middle">ENTAILMENT MODEL</text>
+        <text class="m n-text" x="604" y="88" text-anchor="middle" font-size="11.5" font-weight="500">deberta-base-mnli</text>
+        <text class="t2" x="604" y="105" text-anchor="middle" font-size="9.5">3-way MNLI head,</text>
+        <text class="t2" x="604" y="118" text-anchor="middle" font-size="9.5">argmax per pair</text>
+
+        <rect class="n-fill" x="696" y="44" width="152" height="80" rx="4"/><rect class="n-stroke" x="696" y="44" width="152" height="80" rx="4"/>
+        <text class="n-text cap" x="772" y="66" text-anchor="middle">EVALUATION MODEL</text>
+        <text class="m n-text" x="772" y="88" text-anchor="middle" font-size="12.5" font-weight="500">opt-350m</text>
+        <text class="t2" x="772" y="105" text-anchor="middle" font-size="9.5">teacher-forced pass,</text>
+        <text class="t2" x="772" y="118" text-anchor="middle" font-size="9.5">prompt masked out</text>
+
+        <rect class="s-fill-2" x="864" y="44" width="152" height="80" rx="4"/><rect class="s-rule" x="864" y="44" width="152" height="80" rx="4"/>
+        <text class="t3 cap" x="940" y="66" text-anchor="middle">NO MODEL</text>
+        <text class="m2" x="940" y="88" text-anchor="middle" font-size="12.5">torch</text>
+        <text class="t2" x="940" y="105" text-anchor="middle" font-size="9.5">logsumexp over</text>
+        <text class="t2" x="940" y="118" text-anchor="middle" font-size="9.5">clusters, entropy</text>
+
+        <rect class="s-fill-2" x="1032" y="44" width="152" height="80" rx="4"/><rect class="s-rule" x="1032" y="44" width="152" height="80" rx="4"/>
+        <text class="t3 cap" x="1108" y="66" text-anchor="middle">NO MODEL</text>
+        <text class="m2" x="1108" y="88" text-anchor="middle" font-size="11.5">pandas · sklearn</text>
+        <text class="t2" x="1108" y="105" text-anchor="middle" font-size="9.5">merge on question id,</text>
+        <text class="t2" x="1108" y="118" text-anchor="middle" font-size="9.5">roc_auc_score</text>
+
+        <!-- chip to stage connectors -->
+        <line class="dashline" x1="100"  y1="124" x2="100"  y2="150"/>
+        <line class="dashline" x1="268"  y1="124" x2="268"  y2="150"/>
+        <line class="dashline" x1="436"  y1="124" x2="436"  y2="150"/>
+        <line class="dashline" x1="604"  y1="124" x2="604"  y2="150"/>
+        <line class="dashline" x1="772"  y1="124" x2="772"  y2="150"/>
+        <line class="dashline" x1="940"  y1="124" x2="940"  y2="150"/>
+        <line class="dashline" x1="1108" y1="124" x2="1108" y2="150"/>
+
+        <!-- stage boxes -->
+        <rect class="s-fill" x="24" y="150" width="152" height="112" rx="4"/><rect class="s-rule" x="24" y="150" width="152" height="112" rx="4"/>
+        <text class="m2" x="36" y="171" font-size="9.5">01</text>
+        <text class="t b6" x="36" y="194" font-size="13.5">generate</text>
+        <text class="t2" x="36" y="214" font-size="9.5">5 sampled answers and</text>
+        <text class="t2" x="36" y="228" font-size="9.5">2 beam answers for</text>
+        <text class="t2" x="36" y="242" font-size="9.5">each of 40 questions</text>
+
+        <rect class="s-fill" x="192" y="150" width="152" height="112" rx="4"/><rect class="s-rule" x="192" y="150" width="152" height="112" rx="4"/>
+        <text class="m2" x="204" y="171" font-size="9.5">02</text>
+        <circle class="d-dot" cx="330" cy="167" r="3.5"/>
+        <text class="t b6" x="204" y="194" font-size="13.5">clean</text>
+        <text class="t2" x="204" y="214" font-size="9.5">truncate answers at the</text>
+        <text class="t2" x="204" y="228" font-size="9.5">first turn marker, then</text>
+        <text class="t2" x="204" y="242" font-size="9.5">rebuild their token ids</text>
+
+        <rect class="s-fill" x="360" y="150" width="152" height="112" rx="4"/><rect class="s-rule" x="360" y="150" width="152" height="112" rx="4"/>
+        <text class="m2" x="372" y="171" font-size="9.5">03</text>
+        <circle class="d-dot" cx="498" cy="167" r="3.5"/>
+        <text class="t b6" x="372" y="194" font-size="13.5">score</text>
+        <text class="t2" x="372" y="214" font-size="9.5">ROUGE-L and exact</text>
+        <text class="t2" x="372" y="228" font-size="9.5">match against gold,</text>
+        <text class="t2" x="372" y="242" font-size="9.5">raw and cleaned</text>
+
+        <rect class="s-fill" x="528" y="150" width="152" height="112" rx="4"/><rect class="s-rule" x="528" y="150" width="152" height="112" rx="4"/>
+        <text class="m2" x="540" y="171" font-size="9.5">04</text>
+        <text class="t b6" x="540" y="194" font-size="13.5">similarities</text>
+        <text class="t2" x="540" y="214" font-size="9.5">group answers into</text>
+        <text class="t2" x="540" y="228" font-size="9.5">semantic sets by</text>
+        <text class="t2" x="540" y="242" font-size="9.5">two-way entailment</text>
+
+        <rect class="s-fill" x="696" y="150" width="152" height="112" rx="4"/><rect class="s-rule" x="696" y="150" width="152" height="112" rx="4"/>
+        <text class="m2" x="708" y="171" font-size="9.5">05</text>
+        <circle class="d-dot" cx="834" cy="167" r="3.5"/>
+        <text class="t b6" x="708" y="194" font-size="13.5">likelihoods</text>
+        <text class="t2" x="708" y="214" font-size="9.5">NLL, unconditioned</text>
+        <text class="t2" x="708" y="228" font-size="9.5">NLL, PMI and hidden</text>
+        <text class="t2" x="708" y="242" font-size="9.5">states per sequence</text>
+
+        <rect class="s-fill" x="864" y="150" width="152" height="112" rx="4"/><rect class="s-rule" x="864" y="150" width="152" height="112" rx="4"/>
+        <text class="m2" x="876" y="171" font-size="9.5">06</text>
+        <text class="t b6" x="876" y="194" font-size="13.5">confidence</text>
+        <text class="t2" x="876" y="214" font-size="9.5">predictive entropy,</text>
+        <text class="t2" x="876" y="228" font-size="9.5">semantic entropy,</text>
+        <text class="t2" x="876" y="242" font-size="9.5">margin, set counts</text>
+
+        <rect class="s-fill" x="1032" y="150" width="152" height="112" rx="4"/><rect class="s-rule" x="1032" y="150" width="152" height="112" rx="4"/>
+        <text class="m2" x="1044" y="171" font-size="9.5">07</text>
+        <text class="t b6" x="1044" y="194" font-size="13.5">analyze</text>
+        <text class="t2" x="1044" y="214" font-size="9.5">AUROC of every</text>
+        <text class="t2" x="1044" y="228" font-size="9.5">measure against</text>
+        <text class="t2" x="1044" y="242" font-size="9.5">correctness</text>
+
+        <!-- stage to stage arrows -->
+        <line class="arrow" marker-end="url(#ar)" x1="177"  y1="206" x2="190"  y2="206"/>
+        <line class="arrow" marker-end="url(#ar)" x1="345"  y1="206" x2="358"  y2="206"/>
+        <line class="arrow" marker-end="url(#ar)" x1="513"  y1="206" x2="526"  y2="206"/>
+        <line class="arrow" marker-end="url(#ar)" x1="681"  y1="206" x2="694"  y2="206"/>
+        <line class="arrow" marker-end="url(#ar)" x1="849"  y1="206" x2="862"  y2="206"/>
+        <line class="arrow" marker-end="url(#ar)" x1="1017" y1="206" x2="1030" y2="206"/>
+
+        <!-- column guides -->
+        <line class="s-rule-soft" x1="100"  y1="262" x2="100"  y2="560"/>
+        <line class="s-rule-soft" x1="268"  y1="262" x2="268"  y2="560"/>
+        <line class="s-rule-soft" x1="436"  y1="262" x2="436"  y2="560"/>
+        <line class="s-rule-soft" x1="604"  y1="262" x2="604"  y2="560"/>
+        <line class="s-rule-soft" x1="772"  y1="262" x2="772"  y2="560"/>
+        <line class="s-rule-soft" x1="940"  y1="262" x2="940"  y2="560"/>
+        <line class="s-rule-soft" x1="1108" y1="262" x2="1108" y2="560"/>
+
+        <text class="t3 cap" x="24" y="288">ARTIFACTS AND WHO TOUCHES THEM</text>
+
+        <!-- L1: generations pickle, rewritten in place three times -->
+        <text class="m2" x="100" y="313" font-size="9.5">sequences/&lt;run&gt;/opt-350m_generations.pkl</text>
+        <line class="life" x1="100" y1="322" x2="1108" y2="322"/>
+        <circle class="dot-w" cx="100" cy="322" r="4.5"/>
+        <circle class="dot-w" cx="268" cy="322" r="4.5"/>
+        <circle class="dot-w" cx="436" cy="322" r="4.5"/>
+        <circle class="dot-r" cx="604" cy="322" r="4"/>
+        <circle class="dot-r" cx="772" cy="322" r="4"/>
+        <circle class="dot-r" cx="1108" cy="322" r="4"/>
+        <text class="t3" x="284" y="338" font-size="8.5">+ cleaned_* fields</text>
+        <text class="t3" x="452" y="338" font-size="8.5">+ rouge / exact_match</text>
+
+        <!-- L2 -->
+        <text class="m2" x="604" y="365" font-size="9.5">sequences/&lt;run&gt;/opt-350m_generations_similarities.pkl</text>
+        <line class="life" x1="604" y1="374" x2="1108" y2="374"/>
+        <circle class="dot-w" cx="604" cy="374" r="4.5"/>
+        <circle class="dot-r" cx="772" cy="374" r="4"/>
+        <circle class="dot-r" cx="1108" cy="374" r="4"/>
+
+        <!-- L3 audit only -->
+        <line class="life" x1="604" y1="412" x2="640" y2="412"/>
+        <circle class="dot-w" cx="604" cy="412" r="4.5"/>
+        <text class="m2" x="650" y="416" font-size="9.5">entailment/&lt;run&gt;/deberta-base-mnli_preds.csv</text>
+        <text class="t3" x="650" y="429" font-size="8.5">every pair verdict, kept for audit — nothing downstream reads it</text>
+
+        <!-- L4 -->
+        <text class="m2" x="772" y="453" font-size="9.5">likelihoods/&lt;run&gt;/opt-350m_generations_opt-350m_likelihoods.pkl</text>
+        <line class="life" x1="772" y1="462" x2="940" y2="462"/>
+        <circle class="dot-w" cx="772" cy="462" r="4.5"/>
+        <circle class="dot-r" cx="940" cy="462" r="4"/>
+
+        <!-- L5 -->
+        <text class="m2" x="940" y="497" font-size="9.5">confidence/&lt;run&gt;/aggregated_likelihoods_opt-350m_generations.pkl</text>
+        <line class="life" x1="940" y1="506" x2="1108" y2="506"/>
+        <circle class="dot-w" cx="940" cy="506" r="4.5"/>
+        <circle class="dot-r" cx="1108" cy="506" r="4"/>
+
+        <!-- L6 terminal outputs -->
+        <line class="life" x1="1108" y1="546" x2="1140" y2="546"/>
+        <circle class="dot-w" cx="1108" cy="546" r="4.5"/>
+        <text class="m2" x="1150" y="536" font-size="9.5">overall_results.json</text>
+        <text class="m2" x="1150" y="550" font-size="9.5">accuracy_verification.csv</text>
+        <text class="m2" x="1150" y="564" font-size="9.5">sequence_embeddings.pkl</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="swatch sw-neural"></i>neural forward pass</span>
+      <span><i class="swatch sw-plain"></i>CPU only, no model</span>
+      <span><i class="swatch sw-delta"></i>changed in this fork</span>
+      <span><i class="swatch sw-write"></i>writes the file</span>
+      <span><i class="swatch sw-read"></i>reads the file</span>
+    </div>
+    <figcaption><b>Figure 1</b>Three of seven stages load a network. Stages 01–03 all write to the <em>same</em> pickle, each one adding fields in place, which is why their order is load-bearing: <code>score</code> has to sit after <code>clean</code> or it grades text that was never truncated. Stage 05 is the first join — it needs both the generations and the semantic sets — and stage 07 is a three-way join on question id.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">02</span>Inside <span style="font-family:var(--mono);font-size:.86em">generate</span> — one model, two decoding rules</h2>
+  <p class="sub">The same weights produce both the answer being judged and the evidence used to judge it. Only the decoding rule differs.</p>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 1060 400" role="img" aria-label="The few-shot prompt enters one OPT-350m model, which splits into two decoding paths: beam search with five beams returning the two most likely answers, and multinomial sampling drawn five times. The beam answers are judged for correctness; the sampled answers are the uncertainty evidence. Both paths share the same stopping controls.">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path class="arrowhead" d="M0,1 L9,5 L0,9 z"/>
+          </marker>
+        </defs>
+
+        <!-- prompt -->
+        <rect class="s-fill-2" x="20" y="150" width="190" height="104" rx="4"/><rect class="s-rule" x="20" y="150" width="190" height="104" rx="4"/>
+        <text class="t3 cap" x="34" y="174">PROMPT</text>
+        <text class="m2" x="34" y="196" font-size="9.5">10-shot preamble</text>
+        <text class="m2" x="34" y="212" font-size="9.5">Question: &lt;question&gt;</text>
+        <text class="m2" x="34" y="228" font-size="9.5">Answer:</text>
+        <text class="t3" x="34" y="246" font-size="8.5">built once by parse_triviaqa.py</text>
+
+        <line class="arrow" marker-end="url(#ar2)" x1="212" y1="202" x2="264" y2="202"/>
+
+        <!-- model -->
+        <rect class="n-fill" x="268" y="132" width="184" height="140" rx="4"/><rect class="n-stroke" x="268" y="132" width="184" height="140" rx="4"/>
+        <text class="n-text cap" x="360" y="160" text-anchor="middle">GENERATION MODEL</text>
+        <text class="m n-text" x="360" y="184" text-anchor="middle" font-size="12.5" font-weight="500">facebook/opt-350m</text>
+        <text class="t2" x="360" y="203" text-anchor="middle" font-size="9.5">AutoModelForCausalLM</text>
+        <text class="t2" x="360" y="230" text-anchor="middle" font-size="9.5">one weight load,</text>
+        <text class="t2" x="360" y="244" text-anchor="middle" font-size="9.5">two decoding rules</text>
+
+        <!-- branches -->
+        <path class="arrow" marker-end="url(#ar2)" d="M452,176 C500,176 510,103 554,103"/>
+        <path class="arrow" marker-end="url(#ar2)" d="M452,230 C500,230 510,301 554,301"/>
+
+        <!-- beam path -->
+        <rect class="s-fill" x="560" y="44" width="252" height="118" rx="4"/><rect class="s-rule" x="560" y="44" width="252" height="118" rx="4"/>
+        <text class="t b6" x="574" y="70" font-size="11">beam search</text>
+        <text class="m2" x="574" y="90" font-size="9.5">num_beams=5 · do_sample=False</text>
+        <text class="m2" x="574" y="104" font-size="9.5">num_return_sequences=2</text>
+        <line class="s-rule-soft" x1="574" y1="116" x2="798" y2="116"/>
+        <text class="t2" x="574" y="134" font-size="10">most_likely_generation</text>
+        <text class="t2" x="574" y="150" font-size="10">second_most_likely_generation</text>
+
+        <line class="arrow" marker-end="url(#ar2)" x1="814" y1="103" x2="856" y2="103"/>
+        <text class="t b6" x="866" y="92" font-size="11">judged for correctness</text>
+        <text class="t3" x="866" y="109" font-size="9">stage 03 — ROUGE-L vs gold answers</text>
+        <text class="t3" x="866" y="123" font-size="9">stage 05 — feeds the margin measure</text>
+
+        <!-- sampling path -->
+        <rect class="s-fill" x="560" y="242" width="252" height="118" rx="4"/><rect class="s-rule" x="560" y="242" width="252" height="118" rx="4"/>
+        <text class="t b6" x="574" y="268" font-size="11">multinomial sampling</text>
+        <text class="m2" x="574" y="288" font-size="9.5">do_sample=True · T=1.0 · top_p=1.0</text>
+        <text class="m2" x="574" y="302" font-size="9.5">drawn 5 times per question</text>
+        <line class="s-rule-soft" x1="574" y1="314" x2="798" y2="314"/>
+        <text class="t2" x="574" y="332" font-size="10">generated_texts[0…4]</text>
+        <text class="t2" x="574" y="348" font-size="10">the disagreement signal</text>
+
+        <line class="arrow" marker-end="url(#ar2)" x1="814" y1="301" x2="856" y2="301"/>
+        <text class="t b6" x="866" y="290" font-size="11">used as the evidence</text>
+        <text class="t3" x="866" y="307" font-size="9">stage 04 — grouped into meaning sets</text>
+        <text class="t3" x="866" y="321" font-size="9">stage 06 — becomes every entropy</text>
+
+        <!-- shared stopping control -->
+        <line class="dashline" x1="360" y1="272" x2="360" y2="300"/>
+        <rect class="d-fill" x="20" y="300" width="420" height="84" rx="4"/><rect class="d-stroke" x="20" y="300" width="420" height="84" rx="4"/>
+        <text class="d-text cap" x="34" y="324">SHARED STOPPING CONTROL</text>
+        <text class="m2" x="34" y="344" font-size="9.5">eos_token_id  =  the '.' token</text>
+        <text class="m2" x="34" y="360" font-size="9.5">bad_words_ids =  15 banned turn markers</text>
+        <text class="t3" x="34" y="376" font-size="8.5">the fork widened this list; opt-350m escapes the paper's six via lowercase</text>
+      </svg>
+    </div>
+    <figcaption><b>Figure 2</b>Two decoding configurations of a single loaded model. The beam branch is deterministic and supplies the answer whose correctness becomes the label; the sampling branch is stochastic and supplies the spread that becomes the prediction. Both are stopped the same way — a period as EOS, turn markers suppressed — so a stopping bug moves the label and the signal together.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">03</span>From answers to a semantic set, and from sets to entropy</h2>
+  <p class="sub">The one step that separates semantic entropy from ordinary predictive entropy is the grouping.</p>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 1080 470" role="img" aria-label="Five sampled answers deduplicate to four unique strings. Every pair is run through DeBERTa in both directions; a contradiction in either direction keeps the answers apart, otherwise they merge into one semantic set. The resulting sets change the entropy formula: predictive entropy averages over sequences, semantic entropy pools likelihood inside each set first and averages over sets.">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path class="arrowhead" d="M0,1 L9,5 L0,9 z"/>
+          </marker>
+        </defs>
+
+        <!-- Panel A -->
+        <text class="t3 cap" x="20" y="36">SAMPLED ANSWERS</text>
+        <text class="t3" x="20" y="52" font-size="9">5 samples, 4 unique after dedup</text>
+        <rect class="s-fill-2" x="20" y="62" width="270" height="26" rx="3"/><rect class="s-rule" x="20" y="62" width="270" height="26" rx="3"/>
+        <text class="m2" x="32" y="79" font-size="9.5">William Golding</text>
+        <rect class="s-fill-2" x="20" y="96" width="270" height="26" rx="3"/><rect class="s-rule" x="20" y="96" width="270" height="26" rx="3"/>
+        <text class="m2" x="32" y="113" font-size="9.5">Golding</text>
+        <rect class="s-fill-2" x="20" y="130" width="270" height="26" rx="3"/><rect class="s-rule" x="20" y="130" width="270" height="26" rx="3"/>
+        <text class="m2" x="32" y="147" font-size="9.5">The author is William Golding</text>
+        <rect class="s-fill-2" x="20" y="164" width="270" height="26" rx="3"/><rect class="s-rule" x="20" y="164" width="270" height="26" rx="3"/>
+        <text class="m2" x="32" y="181" font-size="9.5">Peter Benchley</text>
+        <text class="t3" x="20" y="212" font-size="9">for the question “Who wrote Lord of the Flies?”</text>
+
+        <line class="arrow" marker-end="url(#ar3)" x1="298" y1="126" x2="324" y2="126"/>
+
+        <!-- Panel B -->
+        <text class="t3 cap" x="330" y="36">BIDIRECTIONAL ENTAILMENT</text>
+        <text class="t3" x="330" y="52" font-size="9">4 answers → 6 pairs → 12 DeBERTa forward inputs</text>
+        <rect class="s-fill" x="330" y="62" width="390" height="152" rx="4"/><rect class="s-rule" x="330" y="62" width="390" height="152" rx="4"/>
+        <text class="t b6" x="344" y="88" font-size="10.5">one pair, run both ways</text>
+        <text class="m2" x="344" y="112" font-size="9.5">Q + a1  [SEP]  Q + a2   →  entailment</text>
+        <text class="m2" x="344" y="128" font-size="9.5">Q + a2  [SEP]  Q + a1   →  neutral</text>
+        <line class="s-rule-soft" x1="344" y1="140" x2="706" y2="140"/>
+        <text class="t2" x="344" y="160" font-size="9.5">neither direction returned contradiction</text>
+        <text class="t2 b6 n-text" x="344" y="178" font-size="9.5">so a2 is merged into a1's semantic set</text>
+        <text class="t3" x="344" y="200" font-size="9">a single contradiction, either way, keeps the two apart</text>
+        <text class="t3" x="330" y="234" font-size="9">argmax over the 3-way MNLI head; only label 0 (contradiction) splits a pair</text>
+
+        <line class="arrow" marker-end="url(#ar3)" x1="728" y1="126" x2="754" y2="126"/>
+
+        <!-- Panel C -->
+        <text class="t3 cap" x="760" y="36">SEMANTIC SETS</text>
+        <text class="t3" x="760" y="52" font-size="9">clusters, not strings, are what get counted</text>
+        <rect class="n-fill" x="760" y="62" width="300" height="106" rx="4"/><rect class="n-stroke" x="760" y="62" width="300" height="106" rx="4"/>
+        <text class="n-text cap" x="774" y="86">SET 1</text>
+        <text class="m2" x="774" y="110" font-size="9.5">William Golding</text>
+        <text class="m2" x="774" y="128" font-size="9.5">Golding</text>
+        <text class="m2" x="774" y="146" font-size="9.5">The author is William Golding</text>
+        <rect class="s-fill-2" x="760" y="182" width="300" height="54" rx="4"/><rect class="s-rule" x="760" y="182" width="300" height="54" rx="4"/>
+        <text class="t3 cap" x="774" y="204">SET 2</text>
+        <text class="m2" x="774" y="226" font-size="9.5">Peter Benchley</text>
+        <text class="m2" x="760" y="262" font-size="10">number_of_semantic_sets = 2</text>
+
+        <!-- entropy comparison -->
+        <line class="s-rule-soft" x1="20" y1="282" x2="1060" y2="282"/>
+        <rect class="s-fill" x="20" y="296" width="500" height="158" rx="4"/><rect class="s-rule" x="20" y="296" width="500" height="158" rx="4"/>
+        <text class="t3 cap" x="36" y="320">PREDICTIVE ENTROPY — OVER SEQUENCES</text>
+        <text class="m" x="36" y="350" font-size="11.5">PE = -(1/N) * sum_i log p(s_i | x)</text>
+        <text class="t2" x="36" y="382" font-size="10">Every sample is its own outcome. Three ways of</text>
+        <text class="t2" x="36" y="398" font-size="10">saying Golding count as three, so a model that is</text>
+        <text class="t2" x="36" y="414" font-size="10">confident but verbose reads as uncertain.</text>
+        <text class="t3" x="36" y="436" font-size="9">length-normalised variant: average_predictive_entropy</text>
+
+        <rect class="n-fill" x="560" y="296" width="500" height="158" rx="4"/><rect class="n-stroke" x="560" y="296" width="500" height="158" rx="4"/>
+        <text class="n-text cap" x="576" y="320">SEMANTIC ENTROPY — OVER MEANING SETS</text>
+        <text class="m" x="576" y="350" font-size="11.5">SE = -(1/|C|) * sum_c logsumexp_{i in c} log p(s_i | x)</text>
+        <text class="t2" x="576" y="382" font-size="10">Likelihood is pooled inside each set before the</text>
+        <text class="t2" x="576" y="398" font-size="10">average, so the three Golding samples contribute</text>
+        <text class="t2" x="576" y="414" font-size="10">one term. Only real disagreement survives.</text>
+        <text class="t3" x="576" y="436" font-size="9">code subtracts --llh_shift (default 5.0) from each pooled term</text>
+      </svg>
+    </div>
+    <figcaption><b>Figure 3</b>Clustering is the whole method. Both formulas consume the same per-sequence log-likelihoods from stage 05; semantic entropy differs only in pooling them within a set before averaging. Note the estimator caveat the code flags itself: summing member likelihoods to stand in for a cluster's probability is biased — see <code>explainer/estimating-semantic-entropy.html</code>.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">04</span>Stage table</h2>
+  <p class="sub">Every stage, the script behind it, what it loads, and the file boundary it sits on.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Stage</th><th>Script</th><th>Model / compute</th><th>Reads</th><th>Writes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="n">00</td>
+          <td class="k">preprocess</td>
+          <td class="f">parse_triviaqa.py</td>
+          <td><span class="pill pill-p">tokenizer only</span><br><span style="font-size:11.5px">builds the 10-shot prompt from 10 streamed train rows</span></td>
+          <td class="f">HF trivia_qa<br>rc.nocontext</td>
+          <td class="f">data/trivia_qa_200</td>
+        </tr>
+        <tr>
+          <td class="n">01</td>
+          <td class="k">generate</td>
+          <td class="f">generate_improved.py</td>
+          <td><span class="pill pill-n">opt-350m</span><br><span style="font-size:11.5px">causal LM, sampling + beam search</span></td>
+          <td class="f">data/trivia_qa_200</td>
+          <td class="f">…_generations.pkl</td>
+        </tr>
+        <tr>
+          <td class="n">02</td>
+          <td class="k">clean</td>
+          <td class="f">clean_generated_strings_improved.py</td>
+          <td><span class="pill pill-p">tokenizer only</span><br><span style="font-size:11.5px">truncate, then re-tokenize onto the prompt</span></td>
+          <td class="f">…_generations.pkl</td>
+          <td class="f">…_generations.pkl<br><span style="color:var(--delta)">rewritten in place</span></td>
+        </tr>
+        <tr>
+          <td class="n">03</td>
+          <td class="k">score</td>
+          <td class="f">new_score_accuracy.py</td>
+          <td><span class="pill pill-p">evaluate</span><br><span style="font-size:11.5px">ROUGE-1/2/L + exact match, max over references</span></td>
+          <td class="f">…_generations.pkl</td>
+          <td class="f">…_generations.pkl<br><span style="color:var(--delta)">rewritten in place</span></td>
+        </tr>
+        <tr>
+          <td class="n">04</td>
+          <td class="k">similarities</td>
+          <td class="f">get_semantic_similarities_improved.py</td>
+          <td><span class="pill pill-n">deberta-base-mnli</span><br><span style="font-size:11.5px">sequence classification, batched under no_grad</span></td>
+          <td class="f">…_generations.pkl</td>
+          <td class="f">…_similarities.pkl<br>…_preds.csv</td>
+        </tr>
+        <tr>
+          <td class="n">05</td>
+          <td class="k">likelihoods</td>
+          <td class="f">get_likelihoods_improved.py</td>
+          <td><span class="pill pill-n">opt-350m</span><br><span style="font-size:11.5px">reloaded as evaluator; teacher-forced, prompt masked to −100</span></td>
+          <td class="f">…_generations.pkl<br>…_similarities.pkl</td>
+          <td class="f">…_likelihoods.pkl</td>
+        </tr>
+        <tr>
+          <td class="n">06</td>
+          <td class="k">confidence</td>
+          <td class="f">compute_confidence_measure_improved.py</td>
+          <td><span class="pill pill-p">torch</span><br><span style="font-size:11.5px">logsumexp, entropies, top-2 margin — no forward pass</span></td>
+          <td class="f">…_likelihoods.pkl</td>
+          <td class="f">aggregated_likelihoods_…pkl</td>
+        </tr>
+        <tr>
+          <td class="n">07</td>
+          <td class="k">analyze</td>
+          <td class="f">analyze_results.py</td>
+          <td><span class="pill pill-p">pandas · sklearn</span><br><span style="font-size:11.5px">three-way merge on question id, then AUROC</span></td>
+          <td class="f">all three pickles</td>
+          <td class="f">overall_results.json<br>accuracy_verification.csv<br>sequence_embeddings.pkl</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:1rem">The p(True) baseline (<code>get_prompting_based_uncertainty.py</code>) has no <code>_improved</code> version and nothing downstream reads its output, so <code>run_pipeline.py</code> leaves it out of the stage list deliberately.</p>
+</section>
+
+<section>
+  <h2><span class="num">05</span>What comes out</h2>
+  <p class="sub">Stage 07 labels a question <em>correct</em> when ROUGE-L against the gold answer exceeds 0.3, then scores every measure by AUROC against <code>1 − correct</code>. Higher is a better hallucination detector.</p>
+
+  <div class="measures">
+    <div class="measure"><span class="name">predictive_entropy_over_concepts</span><span class="what">Semantic entropy — the headline measure. Length-normalised likelihoods pooled per cluster.</span></div>
+    <div class="measure"><span class="name">unnormalised_entropy_over_concepts</span><span class="what">Same clustering, raw sequence likelihoods instead of per-token averages.</span></div>
+    <div class="measure"><span class="name">predictive_entropy</span><span class="what">Entropy over the five sequences with no clustering at all. The direct ablation.</span></div>
+    <div class="measure"><span class="name">average_predictive_entropy</span><span class="what">Length-normalised version of the same, so long answers stop dominating.</span></div>
+    <div class="measure"><span class="name">margin_measure</span><span class="what">Sum of the average NLL of the best and second-best beam answers.</span></div>
+    <div class="measure"><span class="name">neg_log_likelihood_of_most_likely_gen</span><span class="what">Plain confidence in the answer actually being graded.</span></div>
+    <div class="measure"><span class="name">number_of_semantic_sets</span><span class="what">Cluster count on its own, with no likelihoods involved.</span></div>
+    <div class="measure"><span class="name">rougeL_among_generations</span><span class="what">Lexical-similarity baseline: how alike the five samples look, ignoring meaning.</span></div>
+    <div class="measure"><span class="name">average_pointwise_mutual_information</span><span class="what">log p(a|q) − log p(a): how much the question moved the answer.</span></div>
+    <div class="measure"><span class="name">*_on_subset_k</span><span class="what">Every entropy recomputed on the first k of 5 samples, k = 1…5 — the sample-efficiency curve.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">06</span>Where this fork departs from the paper's implementation</h2>
+  <p class="sub">Four changes to the stage graph, all of them consequences of one bug: correctness was being scored before the text was cleaned.</p>
+
+  <ul class="deltas">
+    <li>
+      <h4>Scoring moved out of <code>generate</code> into its own stage after <code>clean</code></h4>
+      <p>Upstream scored correctness inside the generation loop, which runs before any cleaning. ROUGE therefore compared a roughly 171-word repetition loop against a one-to-three-word reference: <code>rougeL_to_target</code> came out near zero for every question, <code>correct</code> was 0 of 40, and every AUROC in the analysis was <code>nan</code>. Stage 03 now sits between <code>clean</code> and <code>similarities</code> and writes the same bare keys back into the same pickle, so <code>analyze_results.py</code> is untouched.</p>
+    </li>
+    <li>
+      <h4>Beam-search outputs are cleaned too, token ids included</h4>
+      <p>Upstream cleaned only the five sampled generations. The two beam answers stayed raw — which is what stage 03 grades and what stage 05 computes likelihoods over. Both the text and the ids are now cleaned so they cannot drift apart, and the raw fields are kept so the raw-versus-cleaned delta stays reportable.</p>
+    </li>
+    <li>
+      <h4>Likelihoods prefer the cleaned ids, with a fallback that prevents a silent <code>nan</code></h4>
+      <p>Stage 05 strips the padding that cleaning itself added — but only on the cleaned path, leaving the raw path byte-identical to upstream. If cleaning emptied a sequence, every label would be masked and the model would return <code>nan</code>, which would survive three stages and finally surface as <code>roc_auc_score</code> raising “Input contains NaN”. That one sequence falls back to raw ids instead: a worse number, but a finite and traceable one.</p>
+    </li>
+    <li>
+      <h4>A wider ban list, and a check that every marker is one token</h4>
+      <p>The paper's six-entry list only bans capitalised markers; opt-350m escapes through lowercase <code>question:</code>, never emits a period, and runs to <code>max_length</code>. The extended list adds the lowercase and plural forms. Separately, only a marker's <em>first</em> token id is used, so <code>'Answers:'</code> — which tokenizes as <code>['An', 'swers', ':']</code> — would silently ban every answer starting “An…”. Markers are now validated to a single token before use, which is how three fragmenting entries were caught.</p>
+    </li>
+  </ul>
+
+  <h3 style="margin-top:2.5rem">Smaller changes</h3>
+  <p class="col" style="color:var(--ink-2);font-size:15.5px">DeBERTa-<em>base</em>-MNLI replaces the large checkpoint so the entailment stage runs locally; its pair comparisons are batched per question and wrapped in <code>no_grad</code>. Every stage logs an aggregate line to Weights &amp; Biases — non-finite counts, empty-after-cleaning counts, the fraction of questions with more than one semantic set — so a break surfaces at the stage that caused it rather than three stages later.</p>
+</section>
+
+<section>
+  <h2><span class="num">07</span>Running it</h2>
+  <p class="sub">One command drives all seven stages. Each runs as its own subprocess, so one stage's weights are released before the next loads its own.</p>
+
+  <pre><b>python code/parse_triviaqa.py</b> --num_examples 200        <span style="color:var(--ink-3)"># once</span>
+<b>python code/run_pipeline.py</b> --wandb_run_name opt350m-baseline
+
+<span style="color:var(--ink-3)">--dry_run                  print each stage's exact command, run nothing
+--start_from likelihoods   resume after a failure
+--only generate clean      run a subset
+--model opt-1.3b           swap the generator across every stage at once</span></pre>
+
+  <p class="col" style="color:var(--ink-2);font-size:15.5px"><code>--wandb_run_name</code> is the one lever that matters: it names the single W&amp;B run all seven stages log into <em>and</em> names the <code>output/{sequences,entailment,likelihoods,confidence}/&lt;name&gt;/</code> directories, so a run's artifacts stay together instead of scattering under a W&amp;B-generated name. Every other flag falls through to the stage script's own default, which keeps those scripts the single source of truth.</p>
+</section>
+
+<p class="foot">Traces the <code>_improved</code> stack in this fork of <a href="https://github.com/lorenzkuhn/semantic_uncertainty">lorenzkuhn/semantic_uncertainty</a>, the implementation for <em>Semantic Uncertainty: Linguistic Invariances for Uncertainty Estimation in Natural Language Generation</em> (ICLR 2023, <a href="https://arxiv.org/abs/2302.09664">arXiv:2302.09664</a>). Defaults shown are those of <code>run_pipeline.py</code>: opt-350m, trivia_qa, 200 preprocessed examples sliced to 20% (40 questions), 5 generations each, seed 10.</p>
+
+</div>
+
+</body>
+</html>

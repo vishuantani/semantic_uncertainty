@@ -161,17 +161,46 @@ class NegLogLikelihood:
             pointwise_mutual_information = torch.zeros((generations.shape[0],))
             sequence_embeddings = []
 
+            n_empty_generations = 0
+
             for generation_index in range(generations.shape[0]):
                 generation = generations[generation_index][generations[generation_index] != self.tokenizer.pad_token_id] # And do the same with the generated text
 
+                # CHANGED FROM UPSTREAM (--drop_empty_generations). A sample can carry
+                # zero generated tokens: under --stop_on_turn_marker the model's FIRST
+                # token can itself be a turn marker (' Q'), generation halts at length 1,
+                # and _decode_completion strips the marker word away to ''. Every label
+                # is then masked, the loss is nan, and that nan reaches roc_auc_score in
+                # analyze_results.py three stages later as "Input contains NaN".
+                # _sequence_ids already guards the most-likely fields this way; the
+                # sampled generations had no equivalent guard.
+                #
+                # The model is still called so the embedding keeps the right shape - the
+                # values are overwritten rather than skipped. Marking is explicit rather
+                # than left to whatever a zero-label loss happens to return, and
+                # compute_confidence_measure_improved.py renormalises each question's
+                # entropy over the samples that stayed finite.
+                is_empty = len(generation) <= len(prompt)
+                n_empty_generations += int(is_empty)
+
                 # This computation of the negative log likelihoods follows this tutorial: https://huggingface.co/docs/transformers/perplexity
                 generation_output = self.get_neg_log_likelihood_for_generation(generation, len(prompt), most_likely=False)
+
+                sequence_embeddings.append(generation_output['average_of_last_layer_token_embeddings'])
+
+                if is_empty and self.args.drop_empty_generations:
+                    not_a_number = float('nan')
+                    average_neg_log_likelihoods[generation_index] = not_a_number
+                    average_unconditioned_neg_log_likelihoods[generation_index] = not_a_number
+                    neg_log_likelihoods[generation_index] = not_a_number
+                    neg_unconditioned_log_likelihoods[generation_index] = not_a_number
+                    pointwise_mutual_information[generation_index] = not_a_number
+                    continue
+
                 average_neg_log_likelihoods[generation_index] = generation_output['average_neg_log_likelihood']
                 average_unconditioned_neg_log_likelihoods[generation_index] = generation_output['average_unconditioned_neg_log_likelihood']
                 neg_log_likelihoods[generation_index] = generation_output['neg_log_likelihood']
                 neg_unconditioned_log_likelihoods[generation_index] = generation_output['unconditioned_neg_log_likelihood']
-
-                sequence_embeddings.append(generation_output['average_of_last_layer_token_embeddings'])
 
                 pointwise_mutual_information[generation_index] = -generation_output['neg_log_likelihood'] + generation_output['unconditioned_neg_log_likelihood']
 
@@ -209,6 +238,11 @@ class NegLogLikelihood:
             result_dict['neg_log_likelihood_of_most_likely_gen'] = most_likely_generation_generation_output['neg_log_likelihood']
             result_dict['semantic_set_ids'] = torch.tensor(semantic_set_ids)
             result_dict['id'] = id_
+            # Counted whether or not --drop_empty_generations is set, so a run can be
+            # read for how many empties it had without re-running it under the flag.
+            # get_overall_log_likelihoods only stacks its own list_of_keys, so this
+            # extra key does not disturb the downstream tensors.
+            result_dict['n_empty_generations'] = n_empty_generations
 
             return result_dict
 
@@ -275,6 +309,11 @@ class NegLogLikelihood:
             # reach the analysis silently again.
             'n_non_finite': int((~np.isfinite(
                 np.concatenate([average_nll, nll, pmi, most_likely, second]))).sum()),
+            # Sampled generations that produced no tokens at all. With
+            # --drop_empty_generations these are exactly the samples excluded from each
+            # question's entropy; without it they are the ones that will surface as
+            # n_non_finite above and then crash analyze_results.py.
+            'n_empty_generations': int(sum(l.get('n_empty_generations', 0) for l in likelihoods)),
         }
 
 
@@ -285,6 +324,13 @@ def parse_args():
     parser.add_argument('--generation_model', type=str, default='opt-350m')
     parser.add_argument('--run_id', type=str, default='run_1')
     parser.add_argument('--seed', type=int, default=10)
+    parser.add_argument('--drop_empty_generations', action='store_true',
+                        help='Mark samples that generated no tokens as nan so '
+                             'compute_confidence_measure_improved.py can renormalise '
+                             "each question's entropy over the samples that survived. "
+                             'Without it a single empty sample makes roc_auc_score raise '
+                             '"Input contains NaN" in analyze_results.py. Pass the same '
+                             'flag to the confidence stage. Watch n_empty_generations.')
     args = parser.parse_args()
 
     return args

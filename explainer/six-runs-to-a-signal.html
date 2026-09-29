@@ -1,0 +1,759 @@
+<title>Six Runs to a Signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+  :root{
+    --ground:#FBFBFC; --surface:#FFFFFF; --surface-2:#F3F4F8;
+    --ink:#14161C; --ink-2:#4A4F5C; --ink-3:#7B8290;
+    --rule:#DCDEE6; --rule-soft:#EBECF2;
+    --neural:#3F3AA6; --neural-soft:#EDECFA; --neural-ink:#3F3AA6;
+    --delta:#A84A18; --delta-soft:#FAEFE7;
+    /* chart marks - validated against this surface, see figure note */
+    --mark-1:#5B55C9; --mark-2:#C05F26;
+    --serif:'Spectral',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E1014; --surface:#161920; --surface-2:#1D212A;
+      --ink:#E8E9EC; --ink-2:#A6ACBA; --ink-3:#767D8C;
+      --rule:#2A2F3A; --rule-soft:#20242D;
+      --neural:#9A96F5; --neural-soft:#1D1C36; --neural-ink:#ADAAFA;
+      --delta:#E4915C; --delta-soft:#2C1D12;
+      --mark-1:#7D78E6; --mark-2:#CE7A45;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E1014; --surface:#161920; --surface-2:#1D212A;
+    --ink:#E8E9EC; --ink-2:#A6ACBA; --ink-3:#767D8C;
+    --rule:#2A2F3A; --rule-soft:#20242D;
+    --neural:#9A96F5; --neural-soft:#1D1C36; --neural-ink:#ADAAFA;
+    --delta:#E4915C; --delta-soft:#2C1D12;
+    --mark-1:#7D78E6; --mark-2:#CE7A45;
+  }
+
+  html{-webkit-text-size-adjust:100%}
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--serif); font-size:17px; line-height:1.62;
+    margin:0; padding:0 0 6rem;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:76rem;margin:0 auto;padding:0 clamp(1rem,4vw,3rem)}
+  .col{max-width:37rem}
+  p{margin:0 0 1.1em}
+  a{color:var(--neural-ink)}
+  a:focus-visible,summary:focus-visible{outline:2px solid var(--neural);outline-offset:3px;border-radius:2px}
+  code{font-family:var(--mono);font-size:.86em;color:var(--ink-2)}
+  strong{font-weight:600}
+
+  /* ---- paper header ---- */
+  header.paper{padding:clamp(3rem,8vh,6rem) 0 0}
+  .eyebrow{
+    font-family:var(--sans);font-size:11px;font-weight:600;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+    margin:0 0 1.4rem;
+  }
+  h1{
+    font-family:var(--serif);font-weight:600;font-size:clamp(2.1rem,5.2vw,3.1rem);
+    line-height:1.08;letter-spacing:-.015em;margin:0 0 .6rem;text-wrap:balance;
+    max-width:20ch;
+  }
+  .dek{
+    font-family:var(--serif);font-size:clamp(1.05rem,2vw,1.22rem);font-style:italic;
+    color:var(--ink-2);margin:0 0 2rem;max-width:46ch;line-height:1.5;
+  }
+  .meta{
+    display:flex;flex-wrap:wrap;gap:0 2.2rem;
+    border-top:1px solid var(--ink);border-bottom:1px solid var(--rule);
+    padding:.85rem 0;margin:0 0 2.4rem;
+  }
+  .meta div{font-family:var(--sans);font-size:12px;line-height:1.5;padding:.15rem 0}
+  .meta dt{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+  .meta dd{margin:0;font-family:var(--mono);font-size:12px;color:var(--ink)}
+  .abstract{
+    max-width:41rem;border-left:2px solid var(--rule);padding-left:1.6rem;
+    font-size:16px;color:var(--ink-2);margin:0 0 2rem;
+  }
+  .abstract b{color:var(--ink);font-weight:600}
+
+  /* ---- headline figures ---- */
+  .stats{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:0;
+    border:1px solid var(--rule);border-radius:5px;background:var(--surface);
+    overflow:hidden;margin:0 0 1rem;
+  }
+  .stat{padding:1rem 1.1rem;border-right:1px solid var(--rule-soft)}
+  .stat:last-child{border-right:0}
+  .stat dt{
+    font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--ink-3);margin:0 0 .45rem;
+  }
+  .stat dd{
+    margin:0;font-family:var(--mono);font-size:1.5rem;line-height:1;color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
+  .stat dd .was{font-size:.6rem;color:var(--ink-3);display:block;margin-top:.4rem;letter-spacing:.02em}
+
+  /* ---- key ---- */
+  .key{
+    display:flex;flex-wrap:wrap;gap:.4rem 1.6rem;margin:0 0 2rem;
+    font-family:var(--sans);font-size:11.5px;color:var(--ink-2);
+  }
+  .key span{display:inline-flex;align-items:center;gap:.45rem}
+  .kdot{width:9px;height:9px;border-radius:50%;flex:none}
+  .k-neural{background:var(--mark-1)}
+  .k-delta{background:var(--mark-2)}
+
+  /* ---- sections ---- */
+  section{margin:clamp(3.5rem,9vh,6rem) 0 0}
+  h2{
+    font-family:var(--serif);font-weight:600;font-size:1.55rem;line-height:1.2;
+    margin:0 0 .35rem;letter-spacing:-.01em;text-wrap:balance;
+  }
+  h2 .num{
+    font-family:var(--mono);font-size:.72em;font-weight:400;color:var(--ink-3);
+    margin-right:.7em;
+  }
+  .sub{font-family:var(--sans);font-size:13.5px;color:var(--ink-3);margin:0 0 1.6rem;max-width:48ch}
+  h3{font-family:var(--sans);font-size:13px;font-weight:600;letter-spacing:.04em;margin:2rem 0 .5rem;color:var(--ink)}
+
+  /* ---- figures ---- */
+  figure{margin:0 0 1rem;display:flex;flex-direction:column;gap:.9rem}
+  .plate{
+    background:var(--surface);border:1px solid var(--rule);border-radius:5px;
+    padding:1.4rem 1.2rem;overflow-x:auto;
+  }
+  .plate svg{display:block;min-width:900px;width:100%;height:auto}
+  figcaption{
+    font-family:var(--serif);font-size:14.5px;line-height:1.5;color:var(--ink-2);
+    max-width:44rem;
+  }
+  figcaption b{
+    font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--ink);margin-right:.7em;
+  }
+
+  /* ---- svg primitives ---- */
+  .s-rule{fill:none;stroke:var(--rule);stroke-width:1.2}
+  .s-grid{stroke:var(--rule-soft);stroke-width:1;fill:none}
+  .s-chance{stroke:var(--ink-3);stroke-width:1.1;stroke-dasharray:4 3;fill:none}
+  .s-zero{stroke:var(--ink-2);stroke-width:1.3;fill:none}
+  .t{font-family:var(--sans);fill:var(--ink)}
+  .t2{font-family:var(--sans);fill:var(--ink-2)}
+  .t3{font-family:var(--sans);fill:var(--ink-3)}
+  .m{font-family:var(--mono);fill:var(--ink)}
+  .m2{font-family:var(--mono);fill:var(--ink-2)}
+  .m3{font-family:var(--mono);fill:var(--ink-3)}
+  .cap{font-family:var(--sans);font-size:9px;font-weight:600;letter-spacing:.11em;text-transform:uppercase}
+  .b6{font-weight:600}
+  .ci{stroke:var(--mark-1);stroke-width:1.6;fill:none;opacity:.5}
+  .dot{fill:var(--mark-1)}
+  .dot-r{fill:var(--surface);stroke:var(--mark-2);stroke-width:2}
+  .bar{fill:var(--mark-1)}
+  .bar-hollow{fill:var(--surface);stroke:var(--mark-1);stroke-width:1.6}
+  .pt{fill:var(--mark-1);opacity:.42}
+  .fit{stroke:var(--mark-2);stroke-width:2;fill:none}
+  .fit-flat{stroke:var(--ink-3);stroke-width:2;fill:none;stroke-dasharray:5 3}
+  g.row:hover .dot,g.row:hover .bar{fill:var(--neural-ink)}
+  g.row{cursor:default}
+
+  /* ---- tables ---- */
+  .tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:5px;background:var(--surface);margin:0 0 1rem}
+  table{border-collapse:collapse;width:100%;min-width:820px;font-family:var(--sans);font-size:12.5px}
+  th{
+    text-align:left;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--ink-3);font-weight:600;padding:.85rem .9rem;
+    border-bottom:1px solid var(--ink);white-space:nowrap;
+  }
+  td{padding:.75rem .9rem;border-bottom:1px solid var(--rule-soft);vertical-align:top;color:var(--ink-2)}
+  tr:last-child td{border-bottom:0}
+  td.k{font-family:var(--mono);color:var(--ink);white-space:nowrap}
+  td.n{font-family:var(--mono);color:var(--ink);font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+  td.n2{font-family:var(--mono);color:var(--ink-3);font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+  th.r{text-align:right}
+  tr.hi td{background:var(--neural-soft)}
+  tr.bad td.n{color:var(--delta)}
+  .pill{
+    display:inline-block;font-family:var(--mono);font-size:10.5px;padding:.15rem .45rem;
+    border-radius:3px;white-space:nowrap;
+  }
+  .pill-n{background:var(--neural-soft);color:var(--neural-ink);border:1px solid var(--neural)}
+  .pill-d{background:var(--delta-soft);color:var(--delta);border:1px solid var(--delta)}
+  .pill-p{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--rule)}
+
+  /* ---- fault cards ---- */
+  /* three columns so the six faults fill exactly two rows with no empty cells */
+  .faults{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(20rem,1fr));gap:0;
+    border:1px solid var(--rule);border-radius:5px;background:var(--surface);overflow:hidden;
+  }
+  .fault{padding:1.05rem 1.15rem;border-bottom:1px solid var(--rule-soft);border-right:1px solid var(--rule-soft)}
+  .fault:nth-child(3n){border-right:0}
+  .fault:nth-last-child(-n+3){border-bottom:0}
+  .fault .tag{
+    font-family:var(--sans);font-size:9.5px;font-weight:600;letter-spacing:.11em;
+    text-transform:uppercase;display:block;margin-bottom:.4rem;
+  }
+  .fault.code .tag{color:var(--delta)}
+  .fault.meas .tag{color:var(--neural-ink)}
+  .fault .name{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--ink);display:block;margin-bottom:.3rem}
+  .fault .what{font-family:var(--sans);font-size:12px;color:var(--ink-2);line-height:1.55;margin:0}
+
+  /* ---- findings list ---- */
+  .deltas{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1.4rem}
+  .deltas li{padding-left:1.5rem;position:relative;max-width:44rem}
+  .deltas li::before{
+    content:"";position:absolute;left:0;top:.6em;width:8px;height:8px;
+    border-radius:50%;background:var(--delta);
+  }
+  .deltas li.good::before{background:var(--neural)}
+  .deltas h4{font-family:var(--sans);font-size:13.5px;font-weight:600;margin:0 0 .3rem;color:var(--ink)}
+  .deltas p{font-size:15px;color:var(--ink-2);margin:0}
+
+  pre{
+    font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--surface-2);
+    border:1px solid var(--rule);border-radius:5px;padding:1.1rem 1.2rem;overflow-x:auto;
+    color:var(--ink-2);margin:0 0 1rem;
+  }
+  pre b{color:var(--ink);font-weight:500}
+  pre .add{color:var(--neural-ink)}
+  pre .rm{color:var(--delta)}
+
+  .callout{
+    border:1px solid var(--delta);background:var(--delta-soft);border-radius:5px;
+    padding:1.05rem 1.2rem;margin:0 0 1rem;max-width:44rem;
+  }
+  .callout p{margin:0;font-size:15px;color:var(--ink-2)}
+  .callout b{color:var(--ink)}
+  .callout .tag{
+    font-family:var(--sans);font-size:9.5px;font-weight:600;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--delta);display:block;margin-bottom:.4rem;
+  }
+
+  .foot{
+    margin-top:clamp(3.5rem,8vh,5rem);padding-top:1.2rem;border-top:1px solid var(--rule);
+    font-family:var(--sans);font-size:12px;color:var(--ink-3);max-width:48rem;
+  }
+  .foot p{margin:0 0 .6em}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="paper">
+  <p class="eyebrow">Findings report · semantic_uncertainty fork</p>
+  <h1>Six Runs to a Signal</h1>
+  <p class="dek">Five faults stood between this pipeline and a semantic-entropy number worth reading. Four are fixed, one is not, and the headline result is smaller than it first looked.</p>
+
+  <dl class="meta">
+    <div><dt>Dataset</dt><dd>trivia_qa · rc.nocontext</dd></div>
+    <div><dt>Generators</dt><dd>opt-350m → opt-1.3b</dd></div>
+    <div><dt>Entailment</dt><dd>deberta-base-mnli</dd></div>
+    <div><dt>Runs</dt><dd>6</dd></div>
+    <div><dt>Device</dt><dd>Apple M3 · mps · fp32</dd></div>
+    <div><dt>Latest run</dt><dd>opt1.3b-120q-eos</dd></div>
+  </dl>
+
+  <div class="abstract">
+    <p>Across six runs the semantic-entropy AUROC read 0.559, then 0.766, then 0.565, then 0.674, and finally <b>0.718 with a 95% interval of [0.614, 0.821]</b>. Only the last of those is worth quoting, and the reason the earlier ones moved so violently is not that the method improved — it is that four separate faults were each, in turn, dominating the measurement.</p>
+    <p>Two of the faults were in decoding (sampling that never sampled; a stop condition that displaced the model's own end-of-sequence token). One was a crash (a single empty generation turning an entire run's analysis into <code>NaN</code>). One was the evaluation itself (unnormalised entropy measuring answer length rather than uncertainty). <b>The fifth is still open</b>: the correctness metric scores roughly one in five of its own positives wrong.</p>
+    <p>The honest summary is that the pipeline now measures what it claims to, and what it measures is a real but modest signal — one that does <em>not</em> reproduce the paper's central ordering.</p>
+  </div>
+
+  <dl class="stats">
+    <div class="stat"><dt>Accuracy</dt><dd>26.7%<span class="was">was 0.0% at run 01</span></dd></div>
+    <div class="stat"><dt>Correct answers</dt><dd>32<span class="was">the AUROC positive class</span></dd></div>
+    <div class="stat"><dt>Semantic entropy</dt><dd>0.718<span class="was">95% CI [0.614, 0.821]</span></dd></div>
+    <div class="stat"><dt>Best measure</dt><dd>0.756<span class="was">neg_llh_most_likely_gen</span></dd></div>
+    <div class="stat"><dt>Faults closed</dt><dd>4 / 5<span class="was">scoring metric still open</span></dd></div>
+  </dl>
+
+  <div class="key">
+    <span><i class="kdot k-delta"></i>Rust marks an artifact — something that made the numbers lie</span>
+    <span><i class="kdot k-neural"></i>Indigo marks a verified signal or an applied fix</span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">01</span>The run ledger</h2>
+  <p class="sub">Every run, what changed, and what semantic entropy read afterwards. The estimate does not settle until the positive class does.</p>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 960 340" role="img" aria-label="Semantic-entropy AUROC by run. Run 01 has no estimate because zero answers were correct. Run 02 reads 0.559 and run 03 reads 0.766, both on only 3 correct answers and both without confidence intervals because their artifacts were overwritten. Run 04 reads 0.565 with a very wide interval from 0.303 to 0.816 on 8 correct answers. Run 05 reads 0.674 with interval 0.555 to 0.783 and run 06 reads 0.718 with interval 0.614 to 0.821, both on 32 correct answers. The intervals narrow dramatically once the positive count reaches 32.">
+        <text class="t cap" x="8" y="16">Semantic-entropy AUROC by run</text>
+        <text class="t3" x="8" y="32" font-size="10.5">Dot = point estimate · bar = bootstrap 95% CI (4000 resamples) · dashed line = chance</text>
+
+        <!-- x grid + axis -->
+        <g>
+          <line class="s-grid" x1="300" y1="52" x2="300" y2="300"/>
+          <line class="s-grid" x1="400" y1="52" x2="400" y2="300"/>
+          <line class="s-grid" x1="600" y1="52" x2="600" y2="300"/>
+          <line class="s-grid" x1="700" y1="52" x2="700" y2="300"/>
+          <line class="s-grid" x1="800" y1="52" x2="800" y2="300"/>
+          <line class="s-grid" x1="900" y1="52" x2="900" y2="300"/>
+          <line class="s-chance" x1="500" y1="52" x2="500" y2="300"/>
+          <line class="s-rule" x1="250" y1="300" x2="900" y2="300"/>
+          <text class="m3" x="300" y="316" font-size="10" text-anchor="middle">0.30</text>
+          <text class="m3" x="400" y="316" font-size="10" text-anchor="middle">0.40</text>
+          <text class="t3 b6" x="500" y="316" font-size="10" text-anchor="middle">chance</text>
+          <text class="m3" x="600" y="316" font-size="10" text-anchor="middle">0.60</text>
+          <text class="m3" x="700" y="316" font-size="10" text-anchor="middle">0.70</text>
+          <text class="m3" x="800" y="316" font-size="10" text-anchor="middle">0.80</text>
+          <text class="m3" x="900" y="316" font-size="10" text-anchor="middle">0.90</text>
+        </g>
+
+        <!-- column heads -->
+        <text class="t3 cap" x="8" y="46">Run</text>
+        <text class="t3 cap" x="240" y="46" text-anchor="end">Correct</text>
+
+        <!-- 01 -->
+        <g class="row">
+          <title>Run 01 — opt-350m, 40 questions. 0 of 40 correct, so every AUROC was NaN.</title>
+          <text class="m3" x="8" y="74" font-size="11">01</text>
+          <text class="t" x="36" y="74" font-size="11.5">opt-350m · 40q</text>
+          <text class="m3" x="240" y="74" font-size="11" text-anchor="end">0</text>
+          <text class="t3" x="258" y="74" font-size="11" font-style="italic">no estimate — every AUROC was NaN</text>
+        </g>
+        <!-- 02 -->
+        <g class="row">
+          <title>Run 02 — opt-350m, 40 questions, 3 correct. Semantic entropy 0.559. Beam-sample collapsed the generations.</title>
+          <text class="m3" x="8" y="114" font-size="11">02</text>
+          <text class="t" x="36" y="114" font-size="11.5">opt-350m · 40q</text>
+          <text class="m3" x="240" y="114" font-size="11" text-anchor="end">3</text>
+          <circle class="dot-r" cx="559" cy="110" r="5"/>
+          <text class="m2" x="575" y="114" font-size="11">0.559</text>
+        </g>
+        <!-- 03 -->
+        <g class="row">
+          <title>Run 03 — opt-350m, 40 questions, 3 correct. Semantic entropy 0.766. This is the spike that did not survive more data.</title>
+          <text class="m3" x="8" y="154" font-size="11">03</text>
+          <text class="t" x="36" y="154" font-size="11.5">opt-350m · 40q</text>
+          <text class="m3" x="240" y="154" font-size="11" text-anchor="end">3</text>
+          <circle class="dot-r" cx="766" cy="150" r="5"/>
+          <text class="m2" x="782" y="154" font-size="11">0.766</text>
+        </g>
+        <!-- 04 -->
+        <g class="row">
+          <title>Run 04 — opt-350m, 120 questions, 8 correct. Semantic entropy 0.565, 95% CI 0.303 to 0.816.</title>
+          <text class="m3" x="8" y="194" font-size="11">04</text>
+          <text class="t" x="36" y="194" font-size="11.5">opt-350m · 120q</text>
+          <text class="m3" x="240" y="194" font-size="11" text-anchor="end">8</text>
+          <line class="ci" x1="303" y1="190" x2="816" y2="190"/>
+          <line class="ci" x1="303" y1="184" x2="303" y2="196"/>
+          <line class="ci" x1="816" y1="184" x2="816" y2="196"/>
+          <circle class="dot" cx="565" cy="190" r="5"/>
+          <text class="m2" x="830" y="194" font-size="11">0.565</text>
+        </g>
+        <!-- 05 -->
+        <g class="row">
+          <title>Run 05 — opt-1.3b, 120 questions, 32 correct. Semantic entropy 0.674, 95% CI 0.555 to 0.783.</title>
+          <text class="m3" x="8" y="234" font-size="11">05</text>
+          <text class="t" x="36" y="234" font-size="11.5">opt-1.3b · 120q</text>
+          <text class="m3" x="240" y="234" font-size="11" text-anchor="end">32</text>
+          <line class="ci" x1="555" y1="230" x2="783" y2="230"/>
+          <line class="ci" x1="555" y1="224" x2="555" y2="236"/>
+          <line class="ci" x1="783" y1="224" x2="783" y2="236"/>
+          <circle class="dot" cx="674" cy="230" r="5"/>
+          <text class="m2" x="797" y="234" font-size="11">0.674</text>
+        </g>
+        <!-- 06 -->
+        <g class="row">
+          <title>Run 06 — opt-1.3b with the eos fix, 120 questions, 32 correct. Semantic entropy 0.718, 95% CI 0.614 to 0.821. The quotable result.</title>
+          <text class="m3" x="8" y="274" font-size="11">06</text>
+          <text class="t b6" x="36" y="274" font-size="11.5">opt-1.3b · 120q · +eos</text>
+          <text class="m3" x="240" y="274" font-size="11" text-anchor="end">32</text>
+          <line class="ci" x1="614" y1="270" x2="821" y2="270"/>
+          <line class="ci" x1="614" y1="264" x2="614" y2="276"/>
+          <line class="ci" x1="821" y1="264" x2="821" y2="276"/>
+          <circle class="dot" cx="718" cy="270" r="6"/>
+          <text class="m" x="835" y="274" font-size="11">0.718</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption><b>Figure 1</b>Hollow rust dots on runs 02 and 03 have no interval because their output artifacts no longer exist — both runs reused the W&amp;B run name <code>opt350m-40q-stop_marker</code>, so each overwrote the last. The run-naming hazard is itself one of the findings.</figcaption>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Run</th><th>Model</th><th>What changed</th>
+          <th class="r">n</th><th class="r">Correct</th><th class="r">Sem. entropy</th><th>Outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="k">01</td><td class="k">opt-350m</td>
+          <td>Extended ban list, fixed question parsing</td>
+          <td class="n">40</td><td class="n">0</td><td class="n2">—</td>
+          <td><span class="pill pill-d">all NaN</span> Most-likely answers were ~171-word rambles, so ROUGE-L scored 0 everywhere</td>
+        </tr>
+        <tr>
+          <td class="k">02</td><td class="k">opt-350m</td>
+          <td><code>--stop_on_turn_marker</code></td>
+          <td class="n">40</td><td class="n">3</td><td class="n">0.559</td>
+          <td><span class="pill pill-d">artifact</span> Sampling collapsed: 1.5 distinct answers of 5, 1.13 semantic sets</td>
+        </tr>
+        <tr>
+          <td class="k">03</td><td class="k">opt-350m</td>
+          <td><code>--num_beams 1 --batch_samples</code></td>
+          <td class="n">40</td><td class="n">3</td><td class="n">0.766</td>
+          <td><span class="pill pill-d">not real</span> Sampling fixed (4.85 of 5 distinct), but this estimate rests on 3 positives</td>
+        </tr>
+        <tr>
+          <td class="k">04</td><td class="k">opt-350m</td>
+          <td><code>--fraction_of_data_to_use 0.6</code></td>
+          <td class="n">120</td><td class="n">8</td><td class="n">0.565</td>
+          <td><span class="pill pill-p">inconclusive</span> Tripling the data erased run 03's result; CI spans 0.303–0.816</td>
+        </tr>
+        <tr>
+          <td class="k">05</td><td class="k">opt-1.3b</td>
+          <td>Bigger model</td>
+          <td class="n">120</td><td class="n">32</td><td class="n">0.674</td>
+          <td><span class="pill pill-d">crashed</span> Stage 7 died on <code>NaN</code>; recovered after the empty-generation fix</td>
+        </tr>
+        <tr class="hi">
+          <td class="k">06</td><td class="k">opt-1.3b</td>
+          <td><code>--include_model_eos --drop_empty_generations</code></td>
+          <td class="n">120</td><td class="n">32</td><td class="n">0.718</td>
+          <td><span class="pill pill-n">quotable</span> Clean run, no known decoding artifact, CI excludes chance</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02</span>The five faults</h2>
+  <p class="sub">Three were defects in code. Two were defects in how the result was being measured — which made them far harder to see.</p>
+
+  <div class="faults">
+    <div class="fault code">
+      <span class="tag">Code · fixed</span>
+      <span class="name">Sampling that never sampled</span>
+      <p class="what"><code>--num_beams</code> defaulted to 5, so the "samples" were beam-search results returning only the top beam. Repeated five times it returned the same string. 26 of 40 questions produced five identical answers.</p>
+    </div>
+    <div class="fault meas">
+      <span class="tag">Measurement · standing caution</span>
+      <span class="name">Entropy that measured length</span>
+      <p class="what">Unnormalised entropy is a sum over tokens, so it tracks answer length. When wrong answers rambled, it scored 0.838 — reading "long = wrong", not uncertainty. Still correlates <code>+0.75</code> with length today.</p>
+    </div>
+    <div class="fault code">
+      <span class="tag">Code · fixed</span>
+      <span class="name">One empty answer, one dead run</span>
+      <p class="what">A marker sampled as the <em>first</em> token halts generation at length 1; stripping the marker leaves <code>''</code>. Zero tokens gives a NaN loss, and one NaN in 600 made <code>roc_auc_score</code> refuse the entire analysis.</p>
+    </div>
+    <div class="fault code">
+      <span class="tag">Code · fixed</span>
+      <span class="name">A displaced end-of-sequence</span>
+      <p class="what">Passing <code>eos_token_id</code> <em>replaces</em> the model's own <code>&lt;/s&gt;</code> rather than extending it. The model emitted it, kept generating, and <code>skip_special_tokens</code> hid the seam. 19 of 600 samples were affected.</p>
+    </div>
+    <div class="fault meas">
+      <span class="tag">Measurement · open</span>
+      <span class="name">A correctness metric that isn't</span>
+      <p class="what"><code>rougeL &gt; 0.3</code> on one-to-three-word answers passes on surname overlap alone. Six of the 32 "correct" answers are wrong — a 19% false-positive rate inside the positive class every AUROC is computed against.</p>
+    </div>
+    <div class="fault meas">
+      <span class="tag">Process · noted</span>
+      <span class="name">Runs that overwrite runs</span>
+      <p class="what">Three runs reused one W&amp;B name, so each destroyed its predecessor's artifacts. Two point estimates in Figure 1 can no longer be given intervals for exactly this reason.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">03</span>Why 0.766 was never real</h2>
+  <p class="sub">The most instructive moment in the sequence: a result that looked like a finding, and dissolved when given more data.</p>
+
+  <div class="col">
+    <p>Run 03 fixed the sampling collapse and semantic entropy jumped from 0.559 to 0.766. That looked like the method working. It was not.</p>
+    <p>With three correct answers out of forty, AUROC is computed over 3 × 37 = 111 pairs, so every achievable value is a multiple of 1/111 and a single question flipping moves the number by 0.009. Tripling the question count to 120 — which took the positive class from 3 to 8 — dropped the same measure to <strong>0.565</strong>, with a bootstrap interval of [0.303, 0.816].</p>
+    <p>The lesson generalises past this run. Across the sequence, the two measures that stayed <em>stable</em> when the data tripled were <code>ln_predictive_entropy</code> (0.629 → 0.631) and <code>number_of_semantic_sets</code> (0.690 → 0.703). The two that swung hardest were semantic entropy (±0.20) and unnormalised entropy (±0.28). Stability under resampling was the better guide to which numbers meant anything.</p>
+  </div>
+
+  <div class="callout">
+    <span class="tag">The trap</span>
+    <p><b>An AUROC's precision is set by its smaller class, not its sample size.</b> Run 04 had 120 questions and was still uninterpretable, because only 8 of them were correct. Adding questions to a model at 6.7% accuracy buys almost nothing; raising accuracy buys everything.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">04</span>The model was the bottleneck</h2>
+  <p class="sub">Moving from opt-350m to opt-1.3b quadrupled accuracy and, for the first time, made the positive class large enough to measure against.</p>
+
+  <div class="col">
+    <p>opt-1.3b holds the few-shot format that opt-350m could not. The question-echoing that produced answers like <em>"In which month was the bombing of the World Trade Center?"</em> to the question <em>"In what month was the attack on Pearl Harbor?"</em> disappeared entirely.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Generation quality</th><th class="r">opt-350m · 120q</th><th class="r">opt-1.3b · 120q</th></tr></thead>
+      <tbody>
+        <tr><td class="k">accuracy</td><td class="n2">6.7%</td><td class="n">26.7%</td></tr>
+        <tr><td class="k">exact matches</td><td class="n2">2</td><td class="n">17</td></tr>
+        <tr><td class="k">most-likely answer, mean words</td><td class="n2">22.9</td><td class="n">2.1</td></tr>
+        <tr><td class="k">longest answer, words</td><td class="n2">256</td><td class="n">10</td></tr>
+        <tr><td class="k">answers that echo a question</td><td class="n2">14 / 120</td><td class="n">0 / 120</td></tr>
+        <tr><td class="k">rambles over 15 words</td><td class="n2">20 / 120</td><td class="n">1 / 120</td></tr>
+        <tr><td class="k">mean semantic sets</td><td class="n2">3.36</td><td class="n">3.41</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="max-width:44rem">The one thing a bigger model did <em>not</em> fix is the scoring metric — a more capable model produces more near-miss answers, which is exactly what <code>rougeL &gt; 0.3</code> mishandles.</p>
+</section>
+
+<section>
+  <h2><span class="num">05</span>Two bugs in the stop condition</h2>
+  <p class="sub">Both live in how generation is told to stop. One crashed the pipeline outright; the other corrupted 3% of samples silently, which is worse.</p>
+
+  <div class="col">
+    <p>Under <code>--stop_on_turn_marker</code> the marker ids become the stop list. Two things follow, neither intended.</p>
+    <p><strong>First</strong>, if the model's very first token is itself a marker, generation halts immediately and the marker-stripping logic leaves an empty string. That produced one NaN in 600 samples and killed the entire stage-7 analysis. <strong>Second</strong>, and more consequentially, passing <code>eos_token_id</code> to <code>generate()</code> <em>replaces</em> the model's own end-of-sequence id instead of extending the list — so <code>&lt;/s&gt;</code> stopped nothing:</p>
+  </div>
+
+  <pre>tokens:  ' Kh'  'aled'  <b>'&lt;/s&gt;'</b>  'This'  ' invention'  ' relates'  ' to' ...
+decoded: <span class="rm">' KhaledThis invention relates to a fuel-air mixture and, more...'</span>
+         <span class="add">' Khaled'</span>   <span class="add">← after --include_model_eos</span></pre>
+
+  <div class="col">
+    <p>The real answer was "Khaled". Everything after it is text the model had already declared finished, welded on because <code>skip_special_tokens=True</code> deletes the <code>&lt;/s&gt;</code> from the string. This affected <strong>19 of 600 samples</strong>, inflating their length, corrupting their likelihoods, and pushing them into their own semantic clusters — so it degraded the entropy estimates, not just the text.</p>
+    <p>Because both runs cover the same questions with identical correctness labels, the effect is measurable as a <em>paired</em> comparison rather than two overlapping intervals:</p>
+  </div>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 960 320" role="img" aria-label="Change in AUROC after the end-of-sequence fix, per measure, with paired bootstrap 95% intervals. Measures computed from the sampled generations all improved: predictive entropy by 0.140 with interval 0.006 to 0.269, unnormalised entropy over concepts by 0.078, length-normalised predictive entropy by 0.050, semantic entropy by 0.045, and number of semantic sets by 0.015. Only predictive entropy has an interval excluding zero. Measures computed from the most-likely generation did not move: both changed by 0.001 or less.">
+        <text class="t cap" x="8" y="16">Change in AUROC after the end-of-sequence fix</text>
+        <text class="t3" x="8" y="32" font-size="10.5">Paired bootstrap, 4000 resamples · solid bar = interval excludes zero · hollow = it does not</text>
+
+        <g>
+          <line class="s-grid" x1="300" y1="44" x2="300" y2="282"/>
+          <line class="s-grid" x1="600" y1="44" x2="600" y2="282"/>
+          <line class="s-grid" x1="750" y1="44" x2="750" y2="282"/>
+          <line class="s-grid" x1="900" y1="44" x2="900" y2="282"/>
+          <line class="s-zero" x1="450" y1="44" x2="450" y2="282"/>
+          <line class="s-rule" x1="300" y1="282" x2="900" y2="282"/>
+          <text class="m3" x="300" y="298" font-size="10" text-anchor="middle">−0.10</text>
+          <text class="t3 b6" x="450" y="298" font-size="10" text-anchor="middle">no change</text>
+          <text class="m3" x="600" y="298" font-size="10" text-anchor="middle">+0.10</text>
+          <text class="m3" x="750" y="298" font-size="10" text-anchor="middle">+0.20</text>
+          <text class="m3" x="900" y="298" font-size="10" text-anchor="middle">+0.30</text>
+        </g>
+
+        <text class="t3 cap" x="8" y="56">From the sampled generations — all improved</text>
+        <g class="row">
+          <title>predictive_entropy: 0.624 → 0.764, change +0.140, 95% CI +0.006 to +0.269. The only interval excluding zero.</title>
+          <text class="m" x="8" y="79" font-size="11">predictive_entropy</text>
+          <line class="ci" x1="459" y1="75" x2="853" y2="75"/><line class="ci" x1="459" y1="70" x2="459" y2="80"/><line class="ci" x1="853" y1="70" x2="853" y2="80"/>
+          <rect class="bar" x="450" y="69" width="210" height="12" rx="4"/>
+          <text class="m" x="867" y="79" font-size="11">+0.140</text>
+        </g>
+        <g class="row">
+          <title>unnormalised entropy over concepts: 0.681 → 0.760, change +0.078, 95% CI −0.024 to +0.186.</title>
+          <text class="m2" x="8" y="107" font-size="11">unnormalised_entropy_over_concepts</text>
+          <line class="ci" x1="414" y1="103" x2="729" y2="103"/><line class="ci" x1="414" y1="98" x2="414" y2="108"/><line class="ci" x1="729" y1="98" x2="729" y2="108"/>
+          <rect class="bar-hollow" x="450" y="97" width="117" height="12" rx="4"/>
+          <text class="m2" x="743" y="107" font-size="11">+0.078</text>
+        </g>
+        <g class="row">
+          <title>ln_predictive_entropy: 0.692 → 0.742, change +0.050, 95% CI −0.038 to +0.140.</title>
+          <text class="m2" x="8" y="135" font-size="11">ln_predictive_entropy</text>
+          <line class="ci" x1="393" y1="131" x2="660" y2="131"/><line class="ci" x1="393" y1="126" x2="393" y2="136"/><line class="ci" x1="660" y1="126" x2="660" y2="136"/>
+          <rect class="bar-hollow" x="450" y="125" width="75" height="12" rx="4"/>
+          <text class="m2" x="674" y="135" font-size="11">+0.050</text>
+        </g>
+        <g class="row">
+          <title>semantic entropy (predictive_entropy_over_concepts): 0.674 → 0.718, change +0.045, 95% CI −0.051 to +0.138.</title>
+          <text class="m2" x="8" y="163" font-size="11">predictive_entropy_over_concepts</text>
+          <line class="ci" x1="374" y1="159" x2="657" y2="159"/><line class="ci" x1="374" y1="154" x2="374" y2="164"/><line class="ci" x1="657" y1="154" x2="657" y2="164"/>
+          <rect class="bar-hollow" x="450" y="153" width="68" height="12" rx="4"/>
+          <text class="m2" x="671" y="163" font-size="11">+0.045</text>
+        </g>
+        <g class="row">
+          <title>number_of_semantic_sets: 0.658 → 0.673, change +0.015, 95% CI −0.073 to +0.115.</title>
+          <text class="m2" x="8" y="191" font-size="11">number_of_semantic_sets</text>
+          <line class="ci" x1="341" y1="187" x2="623" y2="187"/><line class="ci" x1="341" y1="182" x2="341" y2="192"/><line class="ci" x1="623" y1="182" x2="623" y2="192"/>
+          <rect class="bar-hollow" x="450" y="181" width="23" height="12" rx="4"/>
+          <text class="m2" x="637" y="191" font-size="11">+0.015</text>
+        </g>
+
+        <text class="t3 cap" x="8" y="227">From the most-likely generation — unmoved, as predicted</text>
+        <g class="row">
+          <title>neg_llh_most_likely_gen: 0.757 → 0.756, change −0.001, 95% CI −0.003 to +0.000. Untouched by the fix.</title>
+          <text class="m2" x="8" y="250" font-size="11">neg_llh_most_likely_gen</text>
+          <line class="ci" x1="446" y1="246" x2="450" y2="246"/><line class="ci" x1="446" y1="241" x2="446" y2="251"/>
+          <rect class="bar-hollow" x="448" y="240" width="2" height="12" rx="1"/>
+          <text class="m3" x="470" y="250" font-size="11">−0.001</text>
+        </g>
+        <g class="row">
+          <title>average_neg_llh_most_likely_gen: 0.694 → 0.695, change +0.001, 95% CI +0.000 to +0.003. Untouched by the fix.</title>
+          <text class="m2" x="8" y="278" font-size="11">average_neg_llh_most_likely_gen</text>
+          <line class="ci" x1="450" y1="274" x2="454" y2="274"/><line class="ci" x1="454" y1="269" x2="454" y2="279"/>
+          <rect class="bar-hollow" x="450" y="268" width="2" height="12" rx="1"/>
+          <text class="m3" x="470" y="278" font-size="11">+0.001</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption><b>Figure 2</b>The grouping is the finding. Every measure built from the sampled generations moved up; every measure built from the most-likely generation sat still to within ±0.003 — which is what you would predict if the fix touched only sampled generations, and it did. Taken individually, only <code>predictive_entropy</code> clears zero.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">06</span>Read the normalised numbers</h2>
+  <p class="sub">In the clean run the best-scoring entropy is the unnormalised one. That is the same trap as run 02, in milder form.</p>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 980 330" role="img" aria-label="Two scatter panels of 120 questions each, plotting entropy against mean sampled answer length. In the left panel, unnormalised predictive entropy rises steeply with length, correlation plus 0.754. In the right panel, length-normalised predictive entropy is flat against length, correlation minus 0.029.">
+        <text class="t cap" x="56" y="18">Unnormalised predictive entropy</text>
+        <text class="t3" x="56" y="34" font-size="10.5">r = <tspan class="b6" fill="currentColor">+0.754</tspan> with answer length</text>
+        <text class="t cap" x="536" y="18">Length-normalised (ln) predictive entropy</text>
+        <text class="t3" x="536" y="34" font-size="10.5">r = <tspan class="b6">−0.029</tspan> with answer length</text>
+
+        <!-- panel A frame -->
+        <g>
+          <line class="s-grid" x1="56" y1="48" x2="452" y2="48"/>
+          <line class="s-grid" x1="56" y1="160" x2="452" y2="160"/>
+          <line class="s-rule" x1="56" y1="272" x2="452" y2="272"/>
+          <line class="s-rule" x1="56" y1="48" x2="56" y2="272"/>
+          <text class="m3" x="50" y="52" font-size="9.5" text-anchor="end">24</text>
+          <text class="m3" x="50" y="164" font-size="9.5" text-anchor="end">12</text>
+          <text class="m3" x="50" y="276" font-size="9.5" text-anchor="end">0</text>
+          <text class="m3" x="56" y="290" font-size="9.5" text-anchor="middle">0</text>
+          <text class="m3" x="276" y="290" font-size="9.5" text-anchor="middle">5</text>
+          <text class="m3" x="452" y="290" font-size="9.5" text-anchor="middle">9</text>
+          <text class="t3" x="254" y="308" font-size="10" text-anchor="middle">mean sampled answer length (words)</text>
+        </g>
+        <g><circle class="pt" cx="144.0" cy="181.3" r="3.1"/><circle class="pt" cx="249.6" cy="211.9" r="3.1"/><circle class="pt" cx="144.0" cy="217.8" r="3.1"/><circle class="pt" cx="161.6" cy="204.6" r="3.1"/><circle class="pt" cx="232.0" cy="165.8" r="3.1"/><circle class="pt" cx="258.4" cy="150.0" r="3.1"/><circle class="pt" cx="100.0" cy="241.1" r="3.1"/><circle class="pt" cx="144.0" cy="194.6" r="3.1"/><circle class="pt" cx="223.2" cy="164.6" r="3.1"/><circle class="pt" cx="100.0" cy="202.8" r="3.1"/><circle class="pt" cx="126.4" cy="237.1" r="3.1"/><circle class="pt" cx="100.0" cy="266.2" r="3.1"/><circle class="pt" cx="108.8" cy="254.2" r="3.1"/><circle class="pt" cx="108.8" cy="231.3" r="3.1"/><circle class="pt" cx="152.8" cy="238.8" r="3.1"/><circle class="pt" cx="135.2" cy="201.3" r="3.1"/><circle class="pt" cx="135.2" cy="225.3" r="3.1"/><circle class="pt" cx="152.8" cy="184.3" r="3.1"/><circle class="pt" cx="117.6" cy="250.8" r="3.1"/><circle class="pt" cx="108.8" cy="233.9" r="3.1"/><circle class="pt" cx="117.6" cy="213.5" r="3.1"/><circle class="pt" cx="240.8" cy="82.7" r="3.1"/><circle class="pt" cx="126.4" cy="249.1" r="3.1"/><circle class="pt" cx="214.4" cy="212.2" r="3.1"/><circle class="pt" cx="144.0" cy="231.0" r="3.1"/><circle class="pt" cx="144.0" cy="248.0" r="3.1"/><circle class="pt" cx="179.2" cy="220.0" r="3.1"/><circle class="pt" cx="144.0" cy="199.9" r="3.1"/><circle class="pt" cx="188.0" cy="231.6" r="3.1"/><circle class="pt" cx="161.6" cy="206.4" r="3.1"/><circle class="pt" cx="108.8" cy="218.9" r="3.1"/><circle class="pt" cx="144.0" cy="225.9" r="3.1"/><circle class="pt" cx="135.2" cy="244.5" r="3.1"/><circle class="pt" cx="152.8" cy="234.4" r="3.1"/><circle class="pt" cx="108.8" cy="240.1" r="3.1"/><circle class="pt" cx="100.0" cy="228.3" r="3.1"/><circle class="pt" cx="135.2" cy="216.4" r="3.1"/><circle class="pt" cx="249.6" cy="153.4" r="3.1"/><circle class="pt" cx="117.6" cy="242.5" r="3.1"/><circle class="pt" cx="144.0" cy="210.7" r="3.1"/><circle class="pt" cx="135.2" cy="200.9" r="3.1"/><circle class="pt" cx="152.8" cy="237.0" r="3.1"/><circle class="pt" cx="416.8" cy="58.2" r="3.1"/><circle class="pt" cx="108.8" cy="242.0" r="3.1"/><circle class="pt" cx="126.4" cy="217.7" r="3.1"/><circle class="pt" cx="117.6" cy="201.0" r="3.1"/><circle class="pt" cx="100.0" cy="229.5" r="3.1"/><circle class="pt" cx="144.0" cy="234.6" r="3.1"/><circle class="pt" cx="144.0" cy="204.7" r="3.1"/><circle class="pt" cx="117.6" cy="224.9" r="3.1"/><circle class="pt" cx="100.0" cy="234.7" r="3.1"/><circle class="pt" cx="126.4" cy="187.5" r="3.1"/><circle class="pt" cx="135.2" cy="219.1" r="3.1"/><circle class="pt" cx="152.8" cy="136.3" r="3.1"/><circle class="pt" cx="100.0" cy="254.9" r="3.1"/><circle class="pt" cx="144.0" cy="193.2" r="3.1"/><circle class="pt" cx="135.2" cy="231.7" r="3.1"/><circle class="pt" cx="179.2" cy="107.6" r="3.1"/><circle class="pt" cx="100.0" cy="236.6" r="3.1"/><circle class="pt" cx="161.6" cy="192.8" r="3.1"/><circle class="pt" cx="100.0" cy="268.1" r="3.1"/><circle class="pt" cx="205.6" cy="208.3" r="3.1"/><circle class="pt" cx="126.4" cy="228.9" r="3.1"/><circle class="pt" cx="100.0" cy="256.4" r="3.1"/><circle class="pt" cx="126.4" cy="253.7" r="3.1"/><circle class="pt" cx="135.2" cy="252.3" r="3.1"/><circle class="pt" cx="179.2" cy="178.6" r="3.1"/><circle class="pt" cx="126.4" cy="230.5" r="3.1"/><circle class="pt" cx="100.0" cy="243.6" r="3.1"/><circle class="pt" cx="135.2" cy="226.0" r="3.1"/><circle class="pt" cx="100.0" cy="231.9" r="3.1"/><circle class="pt" cx="135.2" cy="243.8" r="3.1"/><circle class="pt" cx="144.0" cy="223.9" r="3.1"/><circle class="pt" cx="205.6" cy="82.0" r="3.1"/><circle class="pt" cx="135.2" cy="237.9" r="3.1"/><circle class="pt" cx="100.0" cy="261.8" r="3.1"/><circle class="pt" cx="117.6" cy="209.1" r="3.1"/><circle class="pt" cx="144.0" cy="224.9" r="3.1"/><circle class="pt" cx="100.0" cy="233.2" r="3.1"/><circle class="pt" cx="108.8" cy="178.8" r="3.1"/><circle class="pt" cx="144.0" cy="252.4" r="3.1"/><circle class="pt" cx="135.2" cy="233.2" r="3.1"/><circle class="pt" cx="126.4" cy="228.9" r="3.1"/><circle class="pt" cx="108.8" cy="228.9" r="3.1"/><circle class="pt" cx="144.0" cy="170.2" r="3.1"/><circle class="pt" cx="100.0" cy="270.8" r="3.1"/><circle class="pt" cx="100.0" cy="238.2" r="3.1"/><circle class="pt" cx="100.0" cy="223.8" r="3.1"/><circle class="pt" cx="170.4" cy="168.9" r="3.1"/><circle class="pt" cx="126.4" cy="229.7" r="3.1"/><circle class="pt" cx="170.4" cy="216.3" r="3.1"/><circle class="pt" cx="188.0" cy="184.4" r="3.1"/><circle class="pt" cx="100.0" cy="248.8" r="3.1"/><circle class="pt" cx="223.2" cy="187.0" r="3.1"/><circle class="pt" cx="100.0" cy="265.6" r="3.1"/><circle class="pt" cx="144.0" cy="209.8" r="3.1"/><circle class="pt" cx="100.0" cy="234.1" r="3.1"/><circle class="pt" cx="179.2" cy="221.5" r="3.1"/><circle class="pt" cx="126.4" cy="210.0" r="3.1"/><circle class="pt" cx="108.8" cy="227.5" r="3.1"/><circle class="pt" cx="135.2" cy="210.2" r="3.1"/><circle class="pt" cx="223.2" cy="168.7" r="3.1"/><circle class="pt" cx="100.0" cy="229.6" r="3.1"/><circle class="pt" cx="205.6" cy="151.5" r="3.1"/><circle class="pt" cx="108.8" cy="238.3" r="3.1"/><circle class="pt" cx="135.2" cy="242.0" r="3.1"/><circle class="pt" cx="144.0" cy="203.7" r="3.1"/><circle class="pt" cx="205.6" cy="169.1" r="3.1"/><circle class="pt" cx="337.6" cy="95.5" r="3.1"/><circle class="pt" cx="126.4" cy="202.4" r="3.1"/><circle class="pt" cx="135.2" cy="170.4" r="3.1"/><circle class="pt" cx="135.2" cy="225.1" r="3.1"/><circle class="pt" cx="135.2" cy="224.7" r="3.1"/><circle class="pt" cx="108.8" cy="258.8" r="3.1"/><circle class="pt" cx="144.0" cy="172.8" r="3.1"/><circle class="pt" cx="144.0" cy="213.8" r="3.1"/><circle class="pt" cx="135.2" cy="221.0" r="3.1"/><circle class="pt" cx="135.2" cy="226.5" r="3.1"/><circle class="pt" cx="100.0" cy="238.7" r="3.1"/><circle class="pt" cx="188.0" cy="211.4" r="3.1"/></g>
+        <line class="fit" x1="56" y1="266.4" x2="422" y2="48"/>
+
+        <!-- panel B frame -->
+        <g>
+          <line class="s-grid" x1="536" y1="48" x2="932" y2="48"/>
+          <line class="s-grid" x1="536" y1="160" x2="932" y2="160"/>
+          <line class="s-rule" x1="536" y1="272" x2="932" y2="272"/>
+          <line class="s-rule" x1="536" y1="48" x2="536" y2="272"/>
+          <text class="m3" x="530" y="52" font-size="9.5" text-anchor="end">6</text>
+          <text class="m3" x="530" y="164" font-size="9.5" text-anchor="end">3</text>
+          <text class="m3" x="530" y="276" font-size="9.5" text-anchor="end">0</text>
+          <text class="m3" x="536" y="290" font-size="9.5" text-anchor="middle">0</text>
+          <text class="m3" x="756" y="290" font-size="9.5" text-anchor="middle">5</text>
+          <text class="m3" x="932" y="290" font-size="9.5" text-anchor="middle">9</text>
+          <text class="t3" x="734" y="308" font-size="10" text-anchor="middle">mean sampled answer length (words)</text>
+        </g>
+        <g><circle class="pt" cx="624.0" cy="113.3" r="3.1"/><circle class="pt" cx="729.6" cy="218.0" r="3.1"/><circle class="pt" cx="624.0" cy="168.5" r="3.1"/><circle class="pt" cx="641.6" cy="168.3" r="3.1"/><circle class="pt" cx="712.0" cy="200.6" r="3.1"/><circle class="pt" cx="738.4" cy="168.8" r="3.1"/><circle class="pt" cx="580.0" cy="148.2" r="3.1"/><circle class="pt" cx="624.0" cy="157.2" r="3.1"/><circle class="pt" cx="703.2" cy="158.4" r="3.1"/><circle class="pt" cx="580.0" cy="121.9" r="3.1"/><circle class="pt" cx="606.4" cy="166.5" r="3.1"/><circle class="pt" cx="580.0" cy="248.7" r="3.1"/><circle class="pt" cx="588.8" cy="224.9" r="3.1"/><circle class="pt" cx="588.8" cy="164.5" r="3.1"/><circle class="pt" cx="632.8" cy="230.3" r="3.1"/><circle class="pt" cx="615.2" cy="184.9" r="3.1"/><circle class="pt" cx="615.2" cy="175.0" r="3.1"/><circle class="pt" cx="632.8" cy="141.4" r="3.1"/><circle class="pt" cx="597.6" cy="242.6" r="3.1"/><circle class="pt" cx="588.8" cy="158.9" r="3.1"/><circle class="pt" cx="597.6" cy="137.2" r="3.1"/><circle class="pt" cx="720.8" cy="167.8" r="3.1"/><circle class="pt" cx="606.4" cy="203.4" r="3.1"/><circle class="pt" cx="694.4" cy="186.6" r="3.1"/><circle class="pt" cx="624.0" cy="203.0" r="3.1"/><circle class="pt" cx="624.0" cy="236.1" r="3.1"/><circle class="pt" cx="659.2" cy="215.8" r="3.1"/><circle class="pt" cx="624.0" cy="134.9" r="3.1"/><circle class="pt" cx="668.0" cy="200.9" r="3.1"/><circle class="pt" cx="641.6" cy="174.3" r="3.1"/><circle class="pt" cx="588.8" cy="124.9" r="3.1"/><circle class="pt" cx="624.0" cy="207.8" r="3.1"/><circle class="pt" cx="615.2" cy="201.3" r="3.1"/><circle class="pt" cx="632.8" cy="194.0" r="3.1"/><circle class="pt" cx="588.8" cy="198.6" r="3.1"/><circle class="pt" cx="580.0" cy="184.6" r="3.1"/><circle class="pt" cx="615.2" cy="158.3" r="3.1"/><circle class="pt" cx="729.6" cy="184.7" r="3.1"/><circle class="pt" cx="597.6" cy="172.0" r="3.1"/><circle class="pt" cx="624.0" cy="179.2" r="3.1"/><circle class="pt" cx="615.2" cy="186.7" r="3.1"/><circle class="pt" cx="632.8" cy="211.5" r="3.1"/><circle class="pt" cx="896.8" cy="197.2" r="3.1"/><circle class="pt" cx="588.8" cy="208.0" r="3.1"/><circle class="pt" cx="606.4" cy="154.7" r="3.1"/><circle class="pt" cx="597.6" cy="199.0" r="3.1"/><circle class="pt" cx="580.0" cy="102.0" r="3.1"/><circle class="pt" cx="624.0" cy="193.7" r="3.1"/><circle class="pt" cx="624.0" cy="175.1" r="3.1"/><circle class="pt" cx="597.6" cy="133.2" r="3.1"/><circle class="pt" cx="580.0" cy="136.7" r="3.1"/><circle class="pt" cx="606.4" cy="156.2" r="3.1"/><circle class="pt" cx="615.2" cy="168.6" r="3.1"/><circle class="pt" cx="632.8" cy="73.3" r="3.1"/><circle class="pt" cx="580.0" cy="203.5" r="3.1"/><circle class="pt" cx="624.0" cy="191.8" r="3.1"/><circle class="pt" cx="615.2" cy="202.7" r="3.1"/><circle class="pt" cx="659.2" cy="180.2" r="3.1"/><circle class="pt" cx="580.0" cy="153.1" r="3.1"/><circle class="pt" cx="641.6" cy="170.9" r="3.1"/><circle class="pt" cx="580.0" cy="256.5" r="3.1"/><circle class="pt" cx="685.6" cy="192.3" r="3.1"/><circle class="pt" cx="606.4" cy="181.1" r="3.1"/><circle class="pt" cx="580.0" cy="227.4" r="3.1"/><circle class="pt" cx="606.4" cy="223.9" r="3.1"/><circle class="pt" cx="615.2" cy="215.4" r="3.1"/><circle class="pt" cx="659.2" cy="165.3" r="3.1"/><circle class="pt" cx="606.4" cy="209.1" r="3.1"/><circle class="pt" cx="580.0" cy="169.6" r="3.1"/><circle class="pt" cx="615.2" cy="166.4" r="3.1"/><circle class="pt" cx="580.0" cy="193.0" r="3.1"/><circle class="pt" cx="615.2" cy="221.0" r="3.1"/><circle class="pt" cx="624.0" cy="182.4" r="3.1"/><circle class="pt" cx="685.6" cy="119.5" r="3.1"/><circle class="pt" cx="615.2" cy="203.1" r="3.1"/><circle class="pt" cx="580.0" cy="231.4" r="3.1"/><circle class="pt" cx="597.6" cy="156.7" r="3.1"/><circle class="pt" cx="624.0" cy="240.1" r="3.1"/><circle class="pt" cx="580.0" cy="175.4" r="3.1"/><circle class="pt" cx="588.8" cy="78.3" r="3.1"/><circle class="pt" cx="624.0" cy="235.9" r="3.1"/><circle class="pt" cx="615.2" cy="191.0" r="3.1"/><circle class="pt" cx="606.4" cy="153.1" r="3.1"/><circle class="pt" cx="588.8" cy="157.5" r="3.1"/><circle class="pt" cx="624.0" cy="109.3" r="3.1"/><circle class="pt" cx="580.0" cy="267.1" r="3.1"/><circle class="pt" cx="580.0" cy="136.8" r="3.1"/><circle class="pt" cx="580.0" cy="142.0" r="3.1"/><circle class="pt" cx="650.4" cy="135.4" r="3.1"/><circle class="pt" cx="606.4" cy="159.1" r="3.1"/><circle class="pt" cx="650.4" cy="208.7" r="3.1"/><circle class="pt" cx="668.0" cy="160.4" r="3.1"/><circle class="pt" cx="580.0" cy="201.8" r="3.1"/><circle class="pt" cx="703.2" cy="164.0" r="3.1"/><circle class="pt" cx="580.0" cy="257.1" r="3.1"/><circle class="pt" cx="624.0" cy="175.2" r="3.1"/><circle class="pt" cx="580.0" cy="210.3" r="3.1"/><circle class="pt" cx="659.2" cy="192.2" r="3.1"/><circle class="pt" cx="606.4" cy="183.9" r="3.1"/><circle class="pt" cx="588.8" cy="215.3" r="3.1"/><circle class="pt" cx="615.2" cy="179.5" r="3.1"/><circle class="pt" cx="703.2" cy="199.5" r="3.1"/><circle class="pt" cx="580.0" cy="119.9" r="3.1"/><circle class="pt" cx="685.6" cy="148.6" r="3.1"/><circle class="pt" cx="588.8" cy="153.6" r="3.1"/><circle class="pt" cx="615.2" cy="212.1" r="3.1"/><circle class="pt" cx="624.0" cy="163.8" r="3.1"/><circle class="pt" cx="685.6" cy="191.5" r="3.1"/><circle class="pt" cx="817.6" cy="184.3" r="3.1"/><circle class="pt" cx="606.4" cy="120.7" r="3.1"/><circle class="pt" cx="615.2" cy="102.1" r="3.1"/><circle class="pt" cx="615.2" cy="156.8" r="3.1"/><circle class="pt" cx="615.2" cy="163.0" r="3.1"/><circle class="pt" cx="588.8" cy="229.6" r="3.1"/><circle class="pt" cx="624.0" cy="157.9" r="3.1"/><circle class="pt" cx="624.0" cy="179.9" r="3.1"/><circle class="pt" cx="615.2" cy="182.3" r="3.1"/><circle class="pt" cx="615.2" cy="172.4" r="3.1"/><circle class="pt" cx="580.0" cy="138.8" r="3.1"/><circle class="pt" cx="668.0" cy="192.3" r="3.1"/></g>
+        <line class="fit-flat" x1="536" y1="176.7" x2="906" y2="184.9"/>
+      </svg>
+    </div>
+    <figcaption><b>Figure 3</b>Each dot is one of the 120 questions in run 06. Note the panels carry different y-ranges (0–24 and 0–6) because they measure different things — they are small multiples, not a shared scale. Unnormalised entropy is still, substantially, a measurement of how long the answers were.</figcaption>
+  </figure>
+
+  <div class="col">
+    <p>Answers in run 06 average 2.0 words, so the confound is far weaker than at opt-350m, where wrong answers averaged 33 words against 3.7 for right ones. But it has not vanished: correct answers remain slightly shorter (1.74 vs 2.11 words), and length still carries a weak signal about correctness (<code>r = −0.148</code>).</p>
+    <p>So the sensible reading of run 06 is the <strong>length-normalised</strong> pair — <code>ln_predictive_entropy</code> at 0.742 and semantic entropy at 0.718 — not <code>predictive_entropy</code>'s headline 0.764. They are barely behind it anyway.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Measure — run 06</th><th class="r">AUROC</th><th class="r">95% CI</th><th>Confounded by length?</th></tr></thead>
+      <tbody>
+        <tr><td class="k">predictive_entropy</td><td class="n">0.764</td><td class="n2">[0.658, 0.860]</td><td><span class="pill pill-d">yes · r=+0.75</span></td></tr>
+        <tr><td class="k">unnormalised_entropy_over_concepts</td><td class="n">0.760</td><td class="n2">[0.654, 0.856]</td><td><span class="pill pill-d">yes · r=+0.62</span></td></tr>
+        <tr><td class="k">neg_llh_most_likely_gen</td><td class="n">0.756</td><td class="n2">[0.648, 0.853]</td><td><span class="pill pill-p">n/a · single answer</span></td></tr>
+        <tr class="hi"><td class="k">ln_predictive_entropy</td><td class="n">0.742</td><td class="n2">[0.629, 0.845]</td><td><span class="pill pill-n">no · r=−0.03</span></td></tr>
+        <tr class="hi"><td class="k">predictive_entropy_over_concepts <em>(semantic entropy)</em></td><td class="n">0.718</td><td class="n2">[0.614, 0.821]</td><td><span class="pill pill-n">no · r=−0.02</span></td></tr>
+        <tr><td class="k">margin_measure</td><td class="n">0.681</td><td class="n2">—</td><td><span class="pill pill-p">n/a</span></td></tr>
+        <tr><td class="k">number_of_semantic_sets</td><td class="n">0.673</td><td class="n2">[0.562, 0.781]</td><td><span class="pill pill-n">no</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="tag">Does not reproduce</span>
+    <p><b>Semantic entropy is last of the entropy family here.</b> The paper's central claim is that clustering answers by meaning beats length-normalised entropy on raw strings. In run 06 semantic entropy (0.718) sits below <code>ln_predictive_entropy</code> (0.742) and below the plain likelihood of the single most-likely answer (0.756). The intervals overlap heavily, so this is not a refutation — but four runs in, the ordering has not once come out in the paper's favour.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">07</span>The open fault</h2>
+  <p class="sub">Every AUROC above is computed against a positive class in which roughly one answer in five is wrong.</p>
+
+  <div class="col">
+    <p>Of run 06's 32 "correct" answers, only <strong>17 are exact matches</strong>. The other 15 pass on <code>rougeL &gt; 0.3</code>, and on one-to-three-word answers that threshold is cleared by a shared surname or a shared first word.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Model answer</th><th>Gold answer</th><th class="r">rougeL</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr class="bad"><td class="k">Sir Richard Branson</td><td class="k">Richard Noble</td><td class="n">0.40</td><td><span class="pill pill-d">wrong</span> shares "Richard"</td></tr>
+        <tr class="bad"><td class="k">The Last Samurai</td><td class="k">The Crow</td><td class="n">0.40</td><td><span class="pill pill-d">wrong</span> shares "The"</td></tr>
+        <tr class="bad"><td class="k">Apollo 11</td><td class="k">Apollo 17</td><td class="n">0.50</td><td><span class="pill pill-d">wrong</span> shares "Apollo"</td></tr>
+        <tr class="bad"><td class="k">Boston Red Sox</td><td class="k">Boston Braves</td><td class="n">0.40</td><td><span class="pill pill-d">wrong</span> shares "Boston"</td></tr>
+        <tr class="bad"><td class="k">George Tenet</td><td class="k">George Bush</td><td class="n">0.50</td><td><span class="pill pill-d">wrong</span> shares "George"</td></tr>
+        <tr class="bad"><td class="k">Two years</td><td class="k">4 years</td><td class="n">0.50</td><td><span class="pill pill-d">wrong</span> shares "years"</td></tr>
+        <tr><td class="k">The Marshall Plan</td><td class="k">Marshall Plan</td><td class="n2">0.80</td><td><span class="pill pill-n">fair</span></td></tr>
+        <tr><td class="k">Adolf Hitler</td><td class="k">Hitler</td><td class="n2">0.67</td><td><span class="pill pill-n">fair</span></td></tr>
+        <tr><td class="k">David Hockney</td><td class="k">Hockney</td><td class="n2">0.67</td><td><span class="pill pill-n">fair</span></td></tr>
+        <tr><td class="k">Mount Kilimanjaro</td><td class="k">Kilimanjaro</td><td class="n2">0.67</td><td><span class="pill pill-n">fair</span></td></tr>
+        <tr><td class="k">December 1941</td><td class="k">December</td><td class="n2">0.67</td><td><span class="pill pill-n">fair</span></td></tr>
+        <tr><td class="k">Basketball</td><td class="k">A: Basketball</td><td class="n2">0.67</td><td><span class="pill pill-p">gold is dirty</span> 1 of 120 labels</td></tr>
+        <tr><td class="k">Highway 61 Revisited</td><td class="k">61</td><td class="n2">0.50</td><td><span class="pill pill-p">arguable</span> gold is truncated</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>Note that <em>Apollo 11 / Apollo 17</em> and <em>Boston Red Sox / Boston Braves</em> would survive most normalisation schemes too. Fixing this needs answer-alias matching against the dataset's <code>additional_answers</code>, not merely a higher threshold.</p>
+    <p>This is the cheapest remaining improvement and the one that most distorts the results, because it corrupts the labels every other number is ranked against.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">08</span>Where it stands</h2>
+  <p class="sub">What is settled, what is not, and what the next run should change.</p>
+
+  <ul class="deltas">
+    <li class="good">
+      <h4>The uncertainty machinery works</h4>
+      <p>Sampling draws genuinely distinct answers (4.38 of 5 distinct, 3.41 semantic clusters, 83% of questions multi-set). No known decoding artifact remains in run 06. The pipeline measures what it claims to.</p>
+    </li>
+    <li class="good">
+      <h4>The signal is real but modest</h4>
+      <p>Semantic entropy at 0.718 [0.614, 0.821] is the first estimate in the sequence whose interval excludes chance. It is not, however, the best measure available, and it does not beat the length-normalised baseline.</p>
+    </li>
+    <li>
+      <h4>The correctness labels are still wrong 19% of the time</h4>
+      <p>Replace <code>rougeL &gt; 0.3</code> with normalised exact match plus alias matching against <code>additional_answers</code>. Cheapest fix, largest distortion removed.</p>
+    </li>
+    <li>
+      <h4>Precision is still gated by the positive class</h4>
+      <p>32 positives give intervals about 0.21 wide. Roughly 50 positives are needed for ±0.10 — reachable at opt-1.3b's 26.7% accuracy with about 200 questions, and the dataset already holds them.</p>
+    </li>
+    <li>
+      <h4>The entailment clustering deserves a look</h4>
+      <p>On at least one question DeBERTa placed five materially different answers — including an empty string — into a single semantic cluster. If that under-splitting is widespread it caps semantic entropy directly, and it is untested.</p>
+    </li>
+  </ul>
+
+  <h3>Suggested next run</h3>
+  <pre>python code/run_pipeline.py --wandb_run_name <b>opt1.3b-200q-aliasmatch</b> \
+  --model opt-1.3b --fraction_of_data_to_use 1.0 \
+  --num_beams 1 --batch_samples --fix_question_parsing \
+  <span class="add">--include_model_eos --drop_empty_generations</span></pre>
+  <p class="sub" style="max-width:44rem">Note the deliberate omission of <code>--stop_on_turn_marker</code>: opt-1.3b holds the few-shot format without it, so dropping it would restore agreement with the published setup — and both stop-condition bugs live on that path.</p>
+</section>
+
+<div class="foot">
+  <p><b>Provenance.</b> All figures are read from this repository's own artifacts: <code>overall_results.json</code>, the per-stage W&amp;B summaries under <code>output/logs/</code>, and the generation, likelihood and confidence pickles under <code>output/</code>. Confidence intervals are non-parametric bootstraps over questions, 4000 resamples, seed 0; the run-05-to-06 comparison is paired, since both runs cover identical questions with identical correctness labels.</p>
+  <p>Runs 02 and 03 carry point estimates only: all three opt-350m runs reused the W&amp;B name <code>opt350m-40q-stop_marker</code>, so each overwrote its predecessor's pickles and the intervals can no longer be recomputed.</p>
+  <p>Chart mark colours were validated for lightness band, chroma floor, CVD separation and surface contrast against both the light and dark chart surfaces. Companion documents: <em>Seven Stages, Two Models</em> (pipeline reference) and <em>Estimating Semantic Entropy</em> (the estimator's bias).</p>
+</div>
+
+</div>

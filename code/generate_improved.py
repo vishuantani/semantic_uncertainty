@@ -57,13 +57,24 @@ What can be done next:
 
 
 Changes to the original implementation:
-1. --ban_list {upstream,extended}, default extended. Upstream's six-entry list only bans 
+1. --ban_list {upstream,extended}, default extended. Upstream's six-entry list only bans
     capitalised markers; opt-350m escapes via lowercase 'question:' and never emits a
     period, so it runs to max_length. Larger models hold the format and do not need this.
+    IGNORED when --stop_on_turn_marker is set - see item 2.
 2. --stop_on_turn_marker (off): stop on Question:/Answer: instead of banning them, so the
-    model answers as a bare span like the few-shot examples. Also keeps '\n' banned and
-    strips the marker token from the decoded text, since it is part of the returned
+    model answers as a bare span like the few-shot examples. Also keeps the newline
+    banned and strips the marker token from the decoded text, since it is part of the returned
     sequence and would otherwise inflate length and hurt ROUGE precision.
+    THIS FLAG SUPERSEDES --ban_list. The two are mutually exclusive by construction:
+    banning the markers is exactly what prevents the model terminating, so stopping on
+    them requires not banning them. When it is set, the only banned token is the newline
+    and the ban list is built but never passed to generate(). --ban_list still defaults to
+    'extended' and is still written to the W&B config, so a run's config can read
+    `ban_list: extended` while no ban list was actually in force - check
+    stop_on_turn_marker before drawing conclusions from ban_list. Coverage the extended
+    list provided must be re-added to --turn_marker_tokens, which is a curated set rather
+    than an exhaustive one (see TURN_MARKER_TOKENS for what is safe to add and what is a
+    trap).
 3. --fix_question_parsing (off): the upstream split uses 'Answer: ' with a trailing space
      while the prompt ends 'Answer:', so the marker stays glued to every stored question.
 4. Correctness scoring REMOVED from this stage (not a flag - unconditional). Upstream's
@@ -77,6 +88,16 @@ Changes to the original implementation:
     same bare keys back into the same pickle, so analyze_results.py is unchanged. This
     stage's W&B summary correspondingly no longer reports accuracy_rougeL_over_0.3,
     n_correct, mean_rougeL_to_target or mean_exact_match.
+5. --include_model_eos (off): add the tokenizer's own eos id to the stop list. Passing
+    eos_token_id to generate() REPLACES the model eos rather than extending it, so with
+    item 2's marker list in force </s> stops nothing: the model emits it, keeps
+    generating, and skip_special_tokens=True then deletes it from the decoded string -
+    welding the answer onto whatever followed (' Khaled' + '</s>' + 'This invention
+    relates to a fuel-air mixture...' returns as ' KhaledThis invention relates to...').
+    Measured at 19/600 samples on opt-1.3b. Those tails inflate length, corrupt the
+    sequence likelihood and split the sample into its own semantic cluster, so this is an
+    entropy bug rather than a cosmetic one. n_generations_past_model_eos in the W&B
+    summary counts them and should read 0 with the flag on.
 '''
 
 import argparse
@@ -130,7 +151,9 @@ EXTENDED_BANNED_TOKENS = UPSTREAM_BANNED_TOKENS + [
 # --turn_marker_tokens. Note this list omits the plural forms the model actually emits,
 # so --stop_on_turn_marker alone does not stop an ' Answers:' loop.
 TURN_MARKER_TOKENS = ['Question:', ' Question:', 'question:', ' question:',
-                      'Answer:', ' Answer:', 'answer:', ' answer:']
+                      'Answer:', ' Answer:', 'answer:', ' answer:',
+                      ' Answers:', ' Questions:', ' answers:', ' questions:',
+                      'Q:', ' Q:', 'q:', ' q:'] # Don't use "A:" or " A:" as the colon is stripped and those are necessary articles
 
 OPT_MODELS = ['opt-125m', 'opt-350m', 'opt-1.3b', 'opt-2.7b', 'opt-6.7b', 'opt-13b', 'opt-30b']
 
@@ -277,16 +300,47 @@ class GenerationExperiment:
             # model answer as a bare span the way the few-shot examples demonstrate.
             # '\n' is still banned - it is a formatting artifact, not a turn marker, and
             # without it the model restarts the few-shot preamble.
+            #
+            # NOTE: --ban_list IS IGNORED HERE. self.banned_token_ids is built above but
+            # deliberately not passed, because banning the markers is the very thing that
+            # stops the model terminating - the two flags are mutually exclusive by
+            # construction. --ban_list defaults to 'extended' and is logged to the W&B
+            # config regardless, so a run can read `ban_list: extended` while no ban list
+            # was in force. Anything the extended list needs to cover on this path must be
+            # added to --turn_marker_tokens instead (see TURN_MARKER_TOKENS).
             # Same fragmentation trap as the ban list, and this list is settable
             # from the CLI via --turn_marker_tokens, so validate before use.
             self._validate_single_token_markers(self.args.turn_marker_tokens,
                                                 '--turn_marker_tokens')
             marker_ids = sorted({self._first_token_id(t) for t in self.args.turn_marker_tokens}) # Sorting and set are cosmetic
-            self.generation_control_kwargs = {'eos_token_id': [self.period_token_id] + marker_ids,
+            self.generation_control_kwargs = {'eos_token_id': self._eos_ids([self.period_token_id] + marker_ids),
                                 'bad_words_ids': [[self._first_token_id('\n')]]}
         else:
-            self.generation_control_kwargs = {'eos_token_id': self.period_token_id,
+            self.generation_control_kwargs = {'eos_token_id': self._eos_ids([self.period_token_id]),
                                 'bad_words_ids': self.banned_token_ids}
+
+    def _eos_ids(self, ids):
+        """The ids that stop generation, optionally re-including the model's own eos.
+
+        NEW - NO UPSTREAM EQUIVALENT (--include_model_eos, off by default).
+        Passing `eos_token_id` to generate() REPLACES the model's end-of-sequence id
+        rather than extending it. Upstream never noticed because it passed a single
+        period id and opt rarely reached </s> inside a completion; with
+        --stop_on_turn_marker's longer list in force the displacement is visible.
+        The model emits </s>, generation does NOT stop, and it carries on into
+        unrelated text - then _decode_completion's skip_special_tokens=True deletes
+        the </s> from the string, welding the answer onto whatever followed it
+        (' Khaled' + '</s>' + 'This invention relates to a fuel-air mixture...'
+        comes back as ' KhaledThis invention relates to...'). That inflates length,
+        corrupts the sequence's likelihood, and pushes it into its own semantic
+        cluster, so it degrades the entropy measures rather than only the text.
+
+        Returns a bare int when the flag is off and there is a single id, so the
+        kwargs passed to generate() stay byte-identical to earlier runs.
+        """
+        if not self.args.include_model_eos or self.tokenizer.eos_token_id is None:
+            return ids[0] if len(ids) == 1 else ids
+        return sorted(set(ids) | {self.tokenizer.eos_token_id})
 
     def _decode_completion(self, sequence, prompt_length):
         """Decode the generated continuation, minus the prompt.
@@ -516,7 +570,7 @@ class GenerationExperiment:
             print(f'  generations tensor: {describe(sample["generations"])}')
 
     @staticmethod
-    def summarise(sequences):
+    def summarise(sequences, model_eos_id=None, pad_token_id=None):
         """One line of aggregates so runs can be compared without opening the pickle.
 
         CHANGED FROM UPSTREAM: the accuracy aggregates
@@ -527,12 +581,37 @@ class GenerationExperiment:
         the signature of a generation that never stopped.
         """
         answer_words = np.array([len(s['most_likely_generation'].split()) for s in sequences])
-        return {
+        summary = {
             'n_questions': len(sequences),
             'mean_answer_words': float(answer_words.mean()),
             'median_answer_words': float(np.median(answer_words)),
             'max_answer_words': int(answer_words.max()),
         }
+
+        if model_eos_id is not None:
+            # The metric --include_model_eos exists to move. Non-zero means generations
+            # ran PAST the model's own end-of-sequence marker, so their tails are text
+            # the model had already declared finished. Should be 0 with the flag on.
+            summary['n_generations_past_model_eos'] = GenerationExperiment._count_past_model_eos(
+                sequences, model_eos_id, pad_token_id)
+
+        return summary
+
+    @staticmethod
+    def _count_past_model_eos(sequences, model_eos_id, pad_token_id):
+        """Sampled generations that contain the model eos with real tokens after it."""
+        count = 0
+        for sequence in sequences:
+            prompt_length = len(sequence['prompt'])
+            for row in sequence['generations']:
+                ids = [int(t) for t in row[prompt_length:]]
+                # generate() writes into a buffer pre-filled with pad, so strip the tail
+                # before asking whether anything followed the eos.
+                while ids and ids[-1] == pad_token_id:
+                    ids.pop()
+                if model_eos_id in ids[:-1]:
+                    count += 1
+        return count
 
 
 def parse_args():
@@ -567,7 +646,11 @@ def parse_args():
     parser.add_argument('--ban_list', type=str, default='extended',
                         choices=['upstream', 'extended'],
                         help="'upstream' is the paper's six-entry list; 'extended' adds "
-                             'lowercase/plural variants that opt-350m slips past.')
+                             'lowercase/plural variants that opt-350m slips past. '
+                             'IGNORED when --stop_on_turn_marker is set: that path bans '
+                             "only '\\n' and stops on --turn_marker_tokens instead. The "
+                             'value is still logged to the W&B config either way, so read '
+                             'stop_on_turn_marker first when comparing runs.')
     parser.add_argument('--turn_marker_tokens', nargs='+', default=TURN_MARKER_TOKENS,
                         metavar='TOKEN',
                         help='Markers used by --stop_on_turn_marker. Only the first token '
@@ -575,7 +658,14 @@ def parse_args():
                              'whitespace stripped) is removed from the decoded text.')
     parser.add_argument('--stop_on_turn_marker', action='store_true',
                         help='Stop on Question:/Answer: instead of banning them, so the '
-                             'model answers as a bare span. Deviates from the paper.')
+                             'model answers as a bare span. Deviates from the paper. '
+                             'Supersedes --ban_list, which has no effect when this is set.')
+    parser.add_argument('--include_model_eos', action='store_true',
+                        help="Add the tokenizer's own eos id to the stop list. Passing "
+                             'eos_token_id to generate() REPLACES the model eos rather '
+                             'than extending it, so without this the model can emit </s> '
+                             'and keep generating; skip_special_tokens then hides the '
+                             'seam. Watch n_generations_past_model_eos.')
     parser.add_argument('--batch_samples', action='store_true',
                         help='Draw all N samples in one generate() call. Requires '
                              '--num_beams 1.')
@@ -606,7 +696,9 @@ def main():
     sequences = experiment.run()
     path = experiment.save(sequences, run_name)
 
-    summary = GenerationExperiment.summarise(sequences)
+    summary = GenerationExperiment.summarise(sequences,
+                                             model_eos_id=experiment.tokenizer.eos_token_id,
+                                             pad_token_id=experiment.tokenizer.pad_token_id)
     wandb.log(summary)
     print('\n' + '  '.join(f'{k}={v}' for k, v in summary.items()))
 
